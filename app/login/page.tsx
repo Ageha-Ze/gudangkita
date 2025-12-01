@@ -39,7 +39,7 @@ export default function LoginPage() {
             <Lock className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-gray-800 tracking-tight">
-            SYIFA HAVEN
+            SELAMAT DATANG DI APLIKASI GUDANG KITA by Ageha-Ze
           </h1>
           <p className="text-gray-600 mt-2 text-sm">
             Sistem Inventori & Penjualan
