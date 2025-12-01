@@ -1,0 +1,229 @@
+// app/api/persediaan/stock-opname/[id]/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { supabaseServer } from '@/lib/supabaseServer';
+
+// GET - Get single stock opname
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const supabase = await supabaseServer();
+    const { id } = await context.params;
+
+    const { data, error } = await supabase
+      .from('stock_opname')
+      .select(`
+        id,
+        tanggal,
+        produk:produk_id (
+          id,
+          nama_produk,
+          kode_produk,
+          stok,
+          hpp
+        ),
+        cabang:cabang_id (
+          id,
+          nama_cabang,
+          kode_cabang
+        ),
+        jumlah_sistem,
+        jumlah_fisik,
+        selisih,
+        status,
+        keterangan,
+        created_at
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+
+    return NextResponse.json({ data });
+  } catch (error: any) {
+    console.error('Error fetching stock opname:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+// PUT - Approve/Reject stock opname
+export async function PUT(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const supabase = await supabaseServer();
+    const { id } = await context.params;
+    const body = await request.json();
+
+    console.log('Updating stock opname:', id, body);
+
+    // Get opname data
+    const { data: opname, error: getError } = await supabase
+      .from('stock_opname')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (getError) throw getError;
+    if (!opname) {
+      return NextResponse.json(
+        { error: 'Data stock opname tidak ditemukan' },
+        { status: 404 }
+      );
+    }
+
+    // Check if already processed
+    if (opname.status !== 'pending') {
+      return NextResponse.json(
+        { error: 'Stock opname sudah diproses sebelumnya' },
+        { status: 400 }
+      );
+    }
+
+    // Update status
+    const { error: updateError } = await supabase
+      .from('stock_opname')
+      .update({
+        status: body.status,
+        keterangan: body.keterangan || opname.keterangan,
+      })
+      .eq('id', id);
+
+    if (updateError) throw updateError;
+
+    // If approved, adjust the stock
+    if (body.status === 'approved' && Math.abs(opname.selisih) > 0.001) {
+      console.log('🔄 Adjusting stock via OPNAME...');
+      console.log('   Produk ID:', opname.produk_id);
+      console.log('   Cabang ID:', opname.cabang_id);
+      console.log('   Stock Sistem:', opname.jumlah_sistem);
+      console.log('   Stock Fisik:', opname.jumlah_fisik);
+      console.log('   Selisih:', opname.selisih);
+
+      // ✅ FIXED: Jangan delete history, hanya insert adjustment
+      // Insert adjustment transaction
+      const { error: stockError } = await supabase
+        .from('stock_barang')
+        .insert({
+          produk_id: opname.produk_id,
+          cabang_id: opname.cabang_id,
+          jumlah: Math.abs(opname.selisih),
+          tanggal: opname.tanggal,
+          tipe: opname.selisih > 0 ? 'masuk' : 'keluar',
+          keterangan: `Stock Opname Adjustment - ${id} (${body.keterangan || 'Stock fisik berbeda dari sistem'})`,
+          hpp: 0,
+          harga_jual: 0,
+          persentase: 0,
+        });
+
+      if (stockError) {
+        console.error('❌ Error creating stock adjustment:', stockError);
+        throw stockError;
+      }
+
+      console.log('✅ Stock adjustment created:', {
+        jumlah: Math.abs(opname.selisih),
+        tipe: opname.selisih > 0 ? 'masuk' : 'keluar',
+      });
+
+      // ✅ Recalculate total stock (all branches)
+      const { data: allTransactions } = await supabase
+        .from('stock_barang')
+        .select('jumlah, tipe')
+        .eq('produk_id', opname.produk_id);
+
+      let totalStock = 0;
+      allTransactions?.forEach(t => {
+        const jumlah = parseFloat(t.jumlah.toString());
+        if (t.tipe === 'masuk') {
+          totalStock += jumlah;
+        } else if (t.tipe === 'keluar') {
+          totalStock -= jumlah;
+        }
+      });
+
+      console.log('✅ Total stock calculated (all branches):', totalStock);
+
+      // Update produk table
+      const { error: produkError } = await supabase
+        .from('produk')
+        .update({ stok: totalStock })
+        .eq('id', opname.produk_id);
+
+      if (produkError) {
+        console.error('❌ Error updating produk:', produkError);
+        throw produkError;
+      }
+
+      console.log('✅ Produk stock updated to:', totalStock);
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: body.status === 'approved' 
+        ? 'Stock opname disetujui dan stock telah disesuaikan' 
+        : 'Stock opname ditolak',
+    });
+
+  } catch (error: any) {
+    console.error('❌ Error updating stock opname:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+// DELETE - Delete stock opname
+export async function DELETE(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const supabase = await supabaseServer();
+    const { id } = await context.params;
+
+    console.log('Deleting stock opname:', id);
+
+    // Get opname data
+    const { data: opname, error: getError } = await supabase
+      .from('stock_opname')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (getError) throw getError;
+    if (!opname) {
+      return NextResponse.json(
+        { error: 'Data stock opname tidak ditemukan' },
+        { status: 404 }
+      );
+    }
+
+    // Only allow delete if status is pending
+    if (opname.status !== 'pending') {
+      return NextResponse.json(
+        { error: 'Hanya stock opname dengan status pending yang bisa dihapus' },
+        { status: 400 }
+      );
+    }
+
+    // Delete the record
+    const { error: deleteError } = await supabase
+      .from('stock_opname')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) throw deleteError;
+
+    console.log('✅ Stock opname deleted');
+
+    return NextResponse.json({
+      success: true,
+      message: 'Stock opname berhasil dihapus',
+    });
+
+  } catch (error: any) {
+    console.error('❌ Error deleting stock opname:', error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}

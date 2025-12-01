@@ -1,0 +1,5 @@
+- [ ] Create app/api/master/pegawai/route.ts with GET and POST handlers for pegawai data, including join with cabang
+- [ ] Update app/transaksi/penjualan/page.tsx to use correct DeleteModal props: itemName and itemValue instead of title and message
+- [ ] Fix the type in app/transaksi/penjualan/[id]/page.tsx by adding 'id' to the cabang interface in Penjualan
+- [ ] Test the modal to ensure pegawai loads correctly without SyntaxError
+- [ ] Verify TypeScript errors are resolved
