@@ -1,104 +1,87 @@
 // middleware.ts
-import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
-  })
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value
-        },
-        set(name: string, value: string, options: any) {
-          request.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          })
-          response.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-        },
-        remove(name: string, options: any) {
-          request.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          })
-          response.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
-        },
-      },
+  try {
+    // Cek cookie user_session untuk custom auth
+    const userSession = request.cookies.get('user_session')?.value;
+    
+    let user = null;
+    if (userSession) {
+      try {
+        user = JSON.parse(userSession);
+      } catch (e) {
+        console.error('Failed to parse user session:', e);
+        // Cookie corrupt, hapus dan redirect ke login
+        const response = NextResponse.redirect(new URL('/login', request.url));
+        response.cookies.delete('user_session');
+        return response;
+      }
     }
-  )
 
-  // Refresh session if expired
-  const { data: { user } } = await supabase.auth.getUser()
+    // Protected routes
+    const protectedPaths = [
+      '/dashboard',
+      '/master',
+      '/transaksi',
+      '/inventory',
+      '/finance-accounting',
+      '/laporan',
+      '/persediaan',
+    ];
 
-  // Protected routes
-  const protectedPaths = [
-    '/dashboard',
-    '/master',
-    '/transaksi',
-    '/inventory',
-    '/finance-accounting',
-    '/laporan',
-  ]
+    const isProtectedRoute = protectedPaths.some(path => 
+      request.nextUrl.pathname.startsWith(path)
+    );
 
-  const isProtectedRoute = protectedPaths.some(path => 
-    request.nextUrl.pathname.startsWith(path)
-  )
+    // Redirect to login if accessing protected route without auth
+    if (isProtectedRoute && !user) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
+      url.searchParams.set('redirect', request.nextUrl.pathname);
+      return NextResponse.redirect(url);
+    }
 
-  // Redirect to login if accessing protected route without auth
-  if (isProtectedRoute && !user) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    url.searchParams.set('redirect', request.nextUrl.pathname)
-    return NextResponse.redirect(url)
+    // Redirect to dashboard if accessing login while authenticated
+    if (request.nextUrl.pathname === '/login' && user) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/dashboard';
+      return NextResponse.redirect(url);
+    }
+
+    return NextResponse.next();
+    
+  } catch (error) {
+    console.error('Middleware error:', error);
+    
+    // Jika ada error di middleware, tetap lanjutkan request
+    // Tapi untuk protected routes, redirect ke login
+    const protectedPaths = [
+      '/dashboard',
+      '/master',
+      '/transaksi',
+      '/inventory',
+      '/finance-accounting',
+      '/laporan',
+      '/persediaan',
+    ];
+    
+    const isProtectedRoute = protectedPaths.some(path => 
+      request.nextUrl.pathname.startsWith(path)
+    );
+    
+    if (isProtectedRoute) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
+      return NextResponse.redirect(url);
+    }
+    
+    return NextResponse.next();
   }
-
-  // Redirect to dashboard if accessing login/register while authenticated
-  if ((request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/register') && user) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
-  }
-
-  return response
 }
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder
-     */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
