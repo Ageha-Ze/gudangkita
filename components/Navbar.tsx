@@ -7,7 +7,7 @@ import { logoutUser } from '@/app/login/actions';
 interface NavbarProps {
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
-  title: string;
+  title?: string; // jadi optional
 }
 
 export default function Navbar({ sidebarOpen, setSidebarOpen, title }: NavbarProps) {
