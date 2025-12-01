@@ -135,22 +135,22 @@ const getStatusColor = (status: string) => {
               </h1>
               <p className="text-slate-600 mt-1">Ringkasan dan analisis transaksi pembelian</p>
             </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className="flex items-center gap-2 px-4 py-2 bg-white border-2 border-slate-200 rounded-xl hover:bg-slate-50 transition-all shadow-sm"
-              >
-                <Filter className="w-4 h-4" />
-                Filter
-              </button>
-              <button
-                onClick={exportToCSV}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-md hover:shadow-lg"
-              >
-                <Download className="w-4 h-4" />
-                Export CSV
-              </button>
-            </div>
+            <div className="flex gap-2 sm:gap-3 justify-end sm:justify-start">
+  <button
+    onClick={() => setShowFilters(!showFilters)}
+    className="sm:flex-none px-3 py-2 sm:px-4 bg-white border-2 border-slate-200 rounded-xl hover:bg-slate-50 active:bg-slate-100 transition-all shadow-sm flex items-center justify-center gap-2"
+  >
+    <Filter className="w-4 h-4" />
+    <span className="hidden sm:inline">Filter</span>
+  </button>
+  <button
+    onClick={exportToCSV}
+    className="sm:flex-none px-3 py-2 sm:px-4 bg-blue-600 text-white rounded-xl hover:bg-blue-700 active:bg-blue-800 transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2"
+  >
+    <Download className="w-4 h-4" />
+    <span className="hidden sm:inline">Export CSV</span>
+  </button>
+</div>
           </div>
         </div>
 
