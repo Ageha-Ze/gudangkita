@@ -4,6 +4,8 @@ import { Menu, LogOut, Bell, User, ChevronDown } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { logoutUser } from '@/app/login/actions'; // sesuaikan path
+
 
 interface NavbarProps {
   sidebarOpen: boolean;
@@ -85,11 +87,22 @@ export default function Navbar({ sidebarOpen, setSidebarOpen }: NavbarProps) {
     return () => clearInterval(interval);
   }, []);
 
-  const handleLogout = () => {
-    router.push('/login');
+  const handleLogout = async () => {
+  try {
+    // Panggil server action untuk hapus cookie
+    await logoutUser();
+    
+    // Clear localStorage jika ada
+    localStorage.clear();
+    sessionStorage.clear();
+    
+    // Hard redirect ke login
     window.location.href = '/login';
-  };
-
+  } catch (error) {
+    console.error('Logout error:', error);
+    window.location.href = '/login';
+  }
+};
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
   const getNotificationColor = (type: string) => {
