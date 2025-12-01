@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { FileText, Printer, Trash2, Eye } from 'lucide-react';
+import { Plus, FileText, Printer, Trash2, Eye } from 'lucide-react';
 import ModalTambahPembelian from './ModalTambahPembelian';
 
 interface DetailPembelian {
@@ -132,8 +132,9 @@ export default function PembelianPage() {
         </div>
         <button
           onClick={() => setShowModal(true)}
-          className="w-full sm:w-auto px-4 sm:px-6 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition"
+          className="w-full sm:w-auto px-4 sm:px-6 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2"
         >
+          <Plus size={18} />
           Tambah
         </button>
       </div>
