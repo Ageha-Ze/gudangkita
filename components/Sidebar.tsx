@@ -138,7 +138,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
               <Sparkles className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold text-white">GUDANGKU</h1>
+              <h1 className="text-lg font-bold text-white">GUDANG KITA</h1>
               <p className="text-xs text-blue-200/60">Tanggal: 16.11.2025</p>
             </div>
           </div>
