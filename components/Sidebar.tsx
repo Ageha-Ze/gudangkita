@@ -90,6 +90,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const [openMenus, setOpenMenus] = useState<string[]>([]);
 
+  // Auto-open menu if current page is in submenu
   useEffect(() => {
     menuItems.forEach((item) => {
       if (item.submenu) {
@@ -107,55 +108,49 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
     );
   };
 
+  // Auto close on mobile when navigating
   useEffect(() => {
-    if (window.innerWidth < 1024 && onClose) {
+    if (onClose && window.innerWidth < 1024) {
       onClose();
     }
   }, [pathname, onClose]);
 
+  useEffect(() => {
+    console.log('Sidebar isOpen:', isOpen);
+  }, [isOpen]);
+
   return (
     <>
-      {/* Overlay - Z-INDEX 40 */}
+      {/* Overlay - HARUS ADA Z-INDEX TINGGI */}
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
-          onClick={onClose} 
+          className="fixed inset-0 bg-black/60 z-[100] lg:hidden"
+          onClick={onClose}
+          style={{ WebkitTapHighlightColor: 'transparent' }}
         />
       )}
 
-      {/* Sidebar - Z-INDEX 50 */}
-      <div
-        className={`fixed lg:static inset-y-0 left-0 z-50 w-72 h-screen flex flex-col bg-gradient-to-br from-slate-900/95 via-blue-900/95 to-purple-900/95 backdrop-blur-xl text-white border-r border-white/10 transition-transform duration-300 ease-in-out ${
+      {/* Sidebar - Z-INDEX LEBIH TINGGI DARI OVERLAY */}
+      <aside
+        className={`fixed lg:static top-0 left-0 h-full w-72 bg-gradient-to-br from-slate-900 via-blue-900 to-purple-900 text-white border-r border-white/10 z-[101] transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
-        style={{
-          boxShadow: '0 0 40px rgba(59, 130, 246, 0.15), inset 0 0 60px rgba(147, 51, 234, 0.1)',
-        }}
       >
-        {/* Animated Background */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-0 -left-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
-          <div className="absolute bottom-0 -right-40 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
-        </div>
-
         {/* Header */}
-        <div className="relative px-6 py-6 border-b border-white/10 bg-gradient-to-r from-white/5 to-transparent backdrop-blur-sm">
+        <div className="px-6 py-6 border-b border-white/10">
           <div className="flex items-center gap-3">
-            <div className="relative w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 via-blue-600 to-purple-600 flex items-center justify-center shadow-xl shadow-blue-500/50 ring-2 ring-white/20">
-              <Sparkles className="w-6 h-6 text-white animate-pulse" />
-              <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-white/20 to-transparent"></div>
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
+              <Sparkles className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-white via-blue-100 to-purple-100 bg-clip-text text-transparent">
-                GUDANGKU
-              </h1>
+              <h1 className="text-lg font-bold text-white">GUDANGKU</h1>
               <p className="text-xs text-blue-200/60">Tanggal: 16.11.2025</p>
             </div>
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="relative flex-1 overflow-y-auto py-4 px-3 space-y-1">
+        <nav className="flex-1 overflow-y-auto py-4 px-3 h-[calc(100vh-180px)]">
           <div className="text-[10px] font-semibold text-blue-200/50 uppercase tracking-wider px-3 mb-3">
             Navigation
           </div>
@@ -167,20 +162,18 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                   <div>
                     <button
                       onClick={() => toggleMenu(item.id)}
-                      className={`w-full group relative flex items-center justify-between px-3 py-2.5 rounded-lg transition-all duration-300 overflow-hidden ${
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors ${
                         openMenus.includes(item.id) 
-                          ? 'bg-white/10 text-white shadow-lg shadow-blue-500/20' 
-                          : 'text-blue-100/70 hover:text-white'
+                          ? 'bg-white/10 text-white' 
+                          : 'text-blue-100/70 hover:text-white hover:bg-white/5'
                       }`}
                     >
-                      <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 via-blue-400/0 to-purple-500/0 group-hover:from-blue-500/20 group-hover:via-blue-400/10 group-hover:to-purple-500/20 transition-all duration-500 rounded-lg"></div>
-                      
-                      <div className="relative flex items-center gap-3 z-10">
+                      <div className="flex items-center gap-3">
                         <item.icon className="w-[18px] h-[18px]" />
                         <span className="text-sm font-medium">{item.name}</span>
                       </div>
                       <ChevronDown
-                        className={`relative z-10 w-4 h-4 transition-transform duration-300 ${
+                        className={`w-4 h-4 transition-transform ${
                           openMenus.includes(item.id) ? 'rotate-180' : ''
                         }`}
                       />
@@ -192,14 +185,14 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                           <Link
                             key={sub.id}
                             href={sub.href}
-                            className={`group relative flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg transition-all duration-300 overflow-hidden ${
+                            className={`flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg transition-colors ${
                               pathname === sub.href
-                                ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/50 font-medium'
+                                ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white font-medium'
                                 : 'text-blue-100/60 hover:text-white hover:bg-white/5'
                             }`}
                           >
-                            <sub.icon className="w-[14px] h-[14px] flex-shrink-0" />
-                            <span className="truncate">{sub.name}</span>
+                            <sub.icon className="w-[14px] h-[14px]" />
+                            <span>{sub.name}</span>
                           </Link>
                         ))}
                       </div>
@@ -208,16 +201,14 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 ) : (
                   <Link
                     href={item.href}
-                    className={`group relative flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-300 overflow-hidden ${
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
                       pathname === item.href
-                        ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/50 font-medium'
-                        : 'text-blue-100/70 hover:text-white'
+                        ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white font-medium'
+                        : 'text-blue-100/70 hover:text-white hover:bg-white/5'
                     }`}
                   >
-                    <div className="relative z-10 flex items-center gap-3 w-full">
-                      <item.icon className="w-[18px] h-[18px]" />
-                      <span className="text-sm">{item.name}</span>
-                    </div>
+                    <item.icon className="w-[18px] h-[18px]" />
+                    <span className="text-sm">{item.name}</span>
                   </Link>
                 )}
               </div>
@@ -226,13 +217,13 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         </nav>
 
         {/* Footer */}
-        <div className="relative p-4 border-t border-white/10 bg-gradient-to-r from-white/5 to-transparent backdrop-blur-sm">
+        <div className="p-4 border-t border-white/10">
           <div className="text-xs text-blue-200/50 text-center">
             <p className="font-medium">© 2025 Ageha-Ze</p>
             <p className="mt-1 text-blue-300/40">Version 1.0.0</p>
           </div>
         </div>
-      </div>
+      </aside>
     </>
   );
 }
