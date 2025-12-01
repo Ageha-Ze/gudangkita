@@ -63,9 +63,7 @@ export default function DashboardPage() {
   if (loading && !dashboardData) {
     return (
       <div className="flex h-screen bg-gray-50">
-        <Sidebar isOpen={sidebarOpen} />
         <div className="flex-1 flex flex-col">
-          <Navbar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} title="Dashboard" />
           <main className="flex-1 p-6 flex items-center justify-center">
             <div className="text-center">
               <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
@@ -80,9 +78,7 @@ export default function DashboardPage() {
   if (error) {
     return (
       <div className="flex h-screen bg-gray-50">
-        <Sidebar isOpen={sidebarOpen} />
         <div className="flex-1 flex flex-col">
-          <Navbar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} title="Dashboard" />
           <main className="flex-1 p-6 flex items-center justify-center">
             <div className="text-center">
               <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -129,10 +125,8 @@ export default function DashboardPage() {
 
   return (
     <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      <Sidebar isOpen={sidebarOpen} />
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Navbar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} title="" />
 
         <main className="flex-1 overflow-y-auto p-6">
           {/* Header */}
