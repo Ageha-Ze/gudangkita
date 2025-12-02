@@ -54,7 +54,7 @@ export default function LoginPage() {
                 <Building2 className="w-7 h-7 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">SYIFA HAVEN</h1>
+                <h1 className="text-2xl font-bold text-gray-900">GUDANG KITA</h1>
                 <p className="text-sm text-gray-500">Warehouse Management</p>
               </div>
             </div>
