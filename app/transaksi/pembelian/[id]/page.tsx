@@ -512,9 +512,6 @@ export default function DetailPembelianPage({
             )}
           </div>
         </div>
-
-    // Bagian yang perlu diperbaiki di akhir file (mulai dari History Cicilan)
-
     {/* History Cicilan */}
     {isBilled && historyCicilan.length > 0 && (
       <div className="bg-white p-4 md:p-6 rounded-lg shadow-md">
