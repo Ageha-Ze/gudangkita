@@ -184,7 +184,7 @@ export default function ModalTambahBarang({
               </option>
               {stockList.map((stock) => (
                 <option key={stock.produk_id} value={stock.produk_id}>
-                  {stock.nama_produk} - Stock: {stock.total_stock.toFixed(2)} {stock.satuan}
+              {stock.nama_produk} - Stock: {(stock.total_stock || 0).toFixed(2)} {stock.satuan}
                 </option>
               ))}
             </select>
