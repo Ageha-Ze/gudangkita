@@ -9,41 +9,65 @@ export async function POST(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: pembelian_id } = await context.params;
     const supabase = await supabaseServer();
-    const { id } = await context.params;
 
-    console.log('Processing terima barang for pembelian_id:', id);
+    console.log('📦 Processing terima barang for pembelian:', pembelian_id);
 
-    // ============================================
-    // 1. Ambil detail pembelian
-    // ============================================
-    const { data: details, error: detailsError } = await supabase
-      .from('detail_pembelian')
-      .select('produk_id, jumlah, harga') // harga = harga beli
-      .eq('pembelian_id', id);
+    // ✅ Get pembelian data
+    const { data: pembelian, error: pembelianError } = await supabase
+      .from('transaksi_pembelian')
+      .select(`
+        *,
+        cabang:cabang_id (
+          id,
+          nama_cabang
+        ),
+        detail_pembelian (
+          id,
+          produk_id,
+          jumlah,
+          harga,
+          subtotal
+        )
+      `)
+      .eq('id', parseInt(pembelian_id))
+      .single();
 
-    if (detailsError) throw detailsError;
+    if (pembelianError) throw pembelianError;
+    if (!pembelian) {
+      return NextResponse.json(
+        { error: 'Pembelian tidak ditemukan' },
+        { status: 404 }
+      );
+    }
 
-    if (!details || details.length === 0) {
+    // ✅ Validation: Must be billed first
+    if (pembelian.status !== 'billed') {
+      return NextResponse.json(
+        { error: 'Pembelian harus di-billing terlebih dahulu' },
+        { status: 400 }
+      );
+    }
+
+    // ✅ Validation: Already received?
+    if (pembelian.status_barang === 'Diterima') {
+      console.log('⚠️ Barang already received, skipping...');
+      return NextResponse.json({
+        error: 'Barang sudah diterima sebelumnya'
+      }, { status: 400 });
+    }
+
+    const detail_pembelian = pembelian.detail_pembelian || [];
+
+    if (detail_pembelian.length === 0) {
       return NextResponse.json(
         { error: 'Tidak ada detail pembelian' },
         { status: 400 }
       );
     }
 
-    // ============================================
-    // 2. Ambil tanggal & cabang dari transaksi pembelian
-    // ============================================
-    const { data: pembelian, error: pembelianError } = await supabase
-      .from('transaksi_pembelian')
-      .select('tanggal, cabang_id')
-      .eq('id', id)
-      .single();
-
-    if (pembelianError) throw pembelianError;
-
-    const tanggal = pembelian?.tanggal || new Date().toISOString().split('T')[0];
-    const cabangId = pembelian?.cabang_id;
+    const cabangId = pembelian.cabang_id || pembelian.cabang?.id;
 
     if (!cabangId) {
       return NextResponse.json(
@@ -52,79 +76,110 @@ export async function POST(
       );
     }
 
-    // ============================================
-    // 3. Loop tiap detail -> insert ke stock_barang + update stok produk
-    // ============================================
-    for (const detail of details) {
+    // ✅ Update status FIRST (prevent race condition)
+    const { error: updateStatusError } = await supabase
+      .from('transaksi_pembelian')
+      .update({
+        status_barang: 'Diterima',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', parseInt(pembelian_id));
 
-      const jumlahMasuk = Number(detail.jumlah);
-      const hargaBeli = Number(detail.harga);
+    if (updateStatusError) throw updateStatusError;
 
-      // --------------------------
-      // Hitung HPP otomatis
-      // --------------------------
-      const hpp = hargaBeli; // karena harga di detail = harga pembelian per item
+    console.log('✅ Status updated to Diterima');
 
-      // Insert ke stock_barang
-      const { error: insertError } = await supabase
-        .from('stock_barang')
-        .insert({
-          produk_id: detail.produk_id,
-          cabang_id: cabangId,
-          jumlah: jumlahMasuk,
-          tanggal: tanggal,
-          tipe: 'masuk',
-          hpp: hpp,
-          persentase: null,       // biarkan user isi manual kalau mau
-          harga_jual: null,       // optional
-          keterangan: `Pembelian barang ID: ${id}`
-        });
+    // ✅ CRITICAL: Check if stock already recorded (prevent duplicate)
+    const { data: stockCheck } = await supabase
+      .from('stock_barang')
+      .select('id')
+      .eq('keterangan', `Pembelian #${pembelian_id}`)
+      .limit(1);
 
-      if (insertError) throw insertError;
+    const stockAlreadyRecorded = stockCheck && stockCheck.length > 0;
 
-      // ============================================
-      // Update stok di tabel produk
-      // ============================================
-      const { data: produk, error: produkError } = await supabase
+    if (stockAlreadyRecorded) {
+      console.log('⚠️ Stock already recorded, skipping insert');
+      return NextResponse.json({
+        success: true,
+        message: 'Barang sudah diterima sebelumnya',
+        details_count: detail_pembelian.length
+      });
+    }
+
+    // ✅ Loop & insert stock
+    for (const item of detail_pembelian) {
+      if (!item) continue;
+
+      const jumlahMasuk = Number(item.jumlah);
+      const hpp = Number(item.harga);
+
+      console.log(`  📦 Processing: Produk ${item.produk_id}, Qty: ${jumlahMasuk}`);
+
+      // Get current stock
+      const { data: produkData, error: produkGetError } = await supabase
         .from('produk')
-        .select('stok')
-        .eq('id', detail.produk_id)
+        .select('stok, nama_produk')
+        .eq('id', item.produk_id)
         .single();
 
-      if (produkError) throw produkError;
+      if (produkGetError) {
+        console.error('Error getting produk:', produkGetError);
+        continue;
+      }
 
-      const newStok = Number(produk.stok) + jumlahMasuk;
+      const currentStok = Number(produkData?.stok || 0);
+      const newStok = currentStok + jumlahMasuk;
 
-      const { error: updateProdukError } = await supabase
+      // ✅ Insert to stock_barang (history)
+      const { error: stockInsertError } = await supabase
+        .from('stock_barang')
+        .insert({
+          produk_id: item.produk_id,
+          cabang_id: cabangId,
+          jumlah: jumlahMasuk,
+          tanggal: pembelian.tanggal,
+          tipe: 'masuk',
+          hpp: hpp,
+          harga_jual: 0,
+          persentase: 0,
+          keterangan: `Pembelian #${pembelian_id}`
+        });
+
+      if (stockInsertError) {
+        console.error('Error inserting stock_barang:', stockInsertError);
+        throw stockInsertError;
+      }
+
+      // ✅ Update produk stock
+      const { error: produkUpdateError } = await supabase
         .from('produk')
         .update({
           stok: newStok,
-          hpp: hpp              // update HPP terbaru
+          hpp: hpp,
+          harga: hpp,
+          updated_at: new Date().toISOString()
         })
-        .eq('id', detail.produk_id);
+        .eq('id', item.produk_id);
 
-      if (updateProdukError) throw updateProdukError;
+      if (produkUpdateError) {
+        console.error('Error updating produk stock:', produkUpdateError);
+        throw produkUpdateError;
+      }
 
-      console.log(`Produk ${detail.produk_id} stok updated: ${produk.stok} -> ${newStok}`);
+      console.log(`    ✅ ${produkData.nama_produk}: ${currentStok} + ${jumlahMasuk} = ${newStok}`);
     }
 
-    // ============================================
-    // 4. Update status transaksi pembelian
-    // ============================================
-    const { error: updateError } = await supabase
-      .from('transaksi_pembelian')
-      .update({ status_barang: 'Diterima' })
-      .eq('id', id);
-
-    if (updateError) throw updateError;
+    console.log('✅ All stock recorded successfully!');
 
     return NextResponse.json({
-      message: 'Barang berhasil diterima & stok diperbarui',
-      details_count: details.length
+      success: true,
+      message: 'Barang berhasil diterima & stock diperbarui',
+      details_count: detail_pembelian.length
     });
 
   } catch (error: any) {
-    console.error('Error processing terima barang:', error);
+    console.error('❌ Error processing terima barang:', error);
     return NextResponse.json(
       { error: error.message },
       { status: 500 }
