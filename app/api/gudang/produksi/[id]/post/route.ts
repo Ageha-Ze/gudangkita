@@ -177,10 +177,10 @@ export async function POST(
       if (updateHasilError) throw updateHasilError;
 
       // Hitung HPP per unit
-      const totalHPP = details.reduce(
-        (sum, d) => sum + parseFloat(d.subtotal?.toString() || '0'),
-        0
-      );
+     const totalHPP = details.reduce(
+    (sum: number, d: DetailProduksi) => sum + parseFloat(d.subtotal?.toString() || '0'),
+    0
+  );
       const hppPerUnit = jumlahMasuk > 0 ? totalHPP / jumlahMasuk : 0;
 
       console.log(`  💰 HPP: Total=${totalHPP} / Qty=${jumlahMasuk} = ${hppPerUnit} per unit`);
