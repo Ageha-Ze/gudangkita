@@ -88,7 +88,7 @@ export async function PUT(
         detail_konsinyasi (
           id,
           produk_id,
-          jumlah,
+          jumlah_titip,
           jumlah_terjual,
           jumlah_kembali,
           jumlah_sisa,
@@ -203,7 +203,7 @@ export async function PUT(
       const details = konsinyasi.detail_konsinyasi || [];
       
       for (const detail of details) {
-        const jumlahTotal = parseFloat(detail.jumlah?.toString() || '0');
+        const jumlahTotal = parseFloat(detail.jumlah_titip?.toString() || '0');
         
         const { error: updateDetailError } = await supabase
           .from('detail_konsinyasi')
