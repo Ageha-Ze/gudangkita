@@ -348,11 +348,15 @@ export default function DetailKonsinyasiPage() {
     }
   };
 
-  if (loading) {
+  
+if (loading) {
     return (
-      <div className="p-6 bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
-        <div className="flex justify-center items-center h-64">
-          <div className="text-xl text-gray-600">Loading...</div>
+      <div className="p-3 sm:p-6 bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+        <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-gray-500 font-medium">Memuat data...</p>
+          </div>
         </div>
       </div>
     );
@@ -360,71 +364,73 @@ export default function DetailKonsinyasiPage() {
 
   if (!data) {
     return (
-      <div className="p-6 bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
-        <div className="text-center text-xl text-gray-600">Data tidak ditemukan</div>
+      <div className="p-3 sm:p-6 bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+        <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+          <p className="text-gray-500 font-medium">Data tidak ditemukan</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+    <div className="p-3 sm:p-6 bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8 bg-white p-4 rounded-xl shadow-lg border-l-4 border-indigo-500">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 sm:mb-8 bg-white p-3 sm:p-4 rounded-xl shadow-lg border-l-4 border-indigo-500">
+        <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
           <button
             onClick={() => router.back()}
-            className="p-2 hover:bg-indigo-100 rounded-lg transition"
+            className="p-2 hover:bg-indigo-100 rounded-lg transition flex-shrink-0"
           >
-            <ArrowLeft size={24} />
+            <ArrowLeft size={20} className="sm:w-6 sm:h-6" />
           </button>
-          <div className="bg-indigo-500 p-3 rounded-lg">
-            <Package className="text-white" size={24} />
+          <div className="bg-indigo-500 p-2 sm:p-3 rounded-lg flex-shrink-0">
+            <Package className="text-white" size={20} />
           </div>
-          <div>
-            <p className="text-sm text-indigo-600">Detail Konsinyasi</p>
-            <h1 className="text-2xl font-bold text-indigo-700">{data.kode_konsinyasi}</h1>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs sm:text-sm text-indigo-600">Detail Konsinyasi</p>
+            <h1 className="text-lg sm:text-2xl font-bold text-indigo-700 truncate">{data.kode_konsinyasi}</h1>
           </div>
         </div>
         {data.status === 'Aktif' && (
           <button
             onClick={handleSelesaikan}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
           >
-            <CheckCircle size={20} />
+            <CheckCircle size={18} />
             Selesaikan
           </button>
         )}
       </div>
 
       {/* Info Konsinyasi */}
-      <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-        <h2 className="text-lg font-bold text-gray-800 mb-4">Informasi Konsinyasi</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-4 sm:mb-6">
+        <h2 className="text-base sm:text-lg font-bold text-gray-800 mb-4">Informasi Konsinyasi</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <p className="text-sm text-gray-600">Tanggal Titip</p>
-            <p className="font-medium">{new Date(data.tanggal_titip).toLocaleDateString('id-ID')}</p>
+            <p className="text-xs sm:text-sm text-gray-600">Tanggal Titip</p>
+            <p className="text-sm sm:text-base font-medium">{new Date(data.tanggal_titip).toLocaleDateString('id-ID')}</p>
           </div>
           <div>
-            <p className="text-sm text-gray-600">Toko</p>
-            <p className="font-medium">{data.toko?.nama_toko || '-'}</p>
+            <p className="text-xs sm:text-sm text-gray-600">Toko</p>
+            <p className="text-sm sm:text-base font-medium">{data.toko?.nama_toko || '-'}</p>
           </div>
           <div>
-            <p className="text-sm text-gray-600">Cabang</p>
-            <p className="font-medium">{data.cabang?.nama_cabang || '-'}</p>
+            <p className="text-xs sm:text-sm text-gray-600">Cabang</p>
+            <p className="text-sm sm:text-base font-medium">{data.cabang?.nama_cabang || '-'}</p>
           </div>
           <div>
-            <p className="text-sm text-gray-600">Pegawai</p>
-            <p className="font-medium">{data.pegawai?.nama || '-'}</p>
+            <p className="text-xs sm:text-sm text-gray-600">Pegawai</p>
+            <p className="text-sm sm:text-base font-medium">{data.pegawai?.nama || '-'}</p>
           </div>
           <div>
-            <p className="text-sm text-gray-600">Total Nilai Titip</p>
-            <p className="font-medium text-lg text-indigo-600">
+            <p className="text-xs sm:text-sm text-gray-600">Total Nilai Titip</p>
+            <p className="text-base sm:text-lg font-medium text-indigo-600">
               Rp {data.total_nilai_titip.toLocaleString('id-ID')}
             </p>
           </div>
           <div>
-            <p className="text-sm text-gray-600">Status</p>
-            <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
+            <p className="text-xs sm:text-sm text-gray-600">Status</p>
+            <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
               data.status === 'Aktif' ? 'bg-green-100 text-green-800' :
               data.status === 'Selesai' ? 'bg-blue-100 text-blue-800' :
               'bg-red-100 text-red-800'
@@ -435,61 +441,128 @@ export default function DetailKonsinyasiPage() {
         </div>
         {data.keterangan && (
           <div className="mt-4">
-            <p className="text-sm text-gray-600">Keterangan</p>
-            <p className="font-medium">{data.keterangan}</p>
+            <p className="text-xs sm:text-sm text-gray-600">Keterangan</p>
+            <p className="text-sm sm:text-base font-medium">{data.keterangan}</p>
           </div>
         )}
       </div>
 
-      {/* Detail Barang */}
-      <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+      {/* Mobile Cards - Detail Barang */}
+      <div className="block lg:hidden space-y-3 mb-4 sm:mb-6">
+        <h2 className="text-base sm:text-lg font-bold text-gray-800 bg-white p-4 rounded-t-xl shadow-lg">Detail Barang</h2>
+        {data.detail_konsinyasi?.map((detail) => (
+          <div key={detail.id} className="bg-white rounded-xl shadow-lg p-4 border-l-4 border-indigo-500">
+            <div className="mb-3">
+              <p className="font-semibold text-indigo-700">{detail.produk?.nama_produk}</p>
+              <p className="text-xs text-gray-500">{detail.produk?.kode_produk}</p>
+            </div>
+            
+            <div className="space-y-2 text-sm mb-3">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Titip:</span>
+                <span className="font-medium">{detail.jumlah_titip}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Terjual:</span>
+                <span className="font-medium text-green-600">{detail.jumlah_terjual}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Sisa:</span>
+                <span className="font-medium text-blue-600">{detail.jumlah_sisa}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Kembali:</span>
+                <span className="font-medium text-orange-600">{detail.jumlah_kembali}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Harga Kita:</span>
+                <span className="font-medium">Rp {detail.harga_konsinyasi.toLocaleString('id-ID')}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Harga Toko:</span>
+                <span className="font-medium">Rp {detail.harga_jual_toko.toLocaleString('id-ID')}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Subtotal:</span>
+                <span className="font-semibold text-indigo-700">
+                  Rp {(detail.jumlah_terjual * detail.harga_konsinyasi).toLocaleString('id-ID')}
+                </span>
+              </div>
+            </div>
+
+            {data.status === 'Aktif' && (
+              <div className="flex gap-2 pt-3 border-t border-gray-200">
+                <button
+                  onClick={() => handleOpenPenjualan(detail)}
+                  disabled={detail.jumlah_sisa <= 0}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-green-600 bg-green-50 hover:bg-green-100 rounded-lg transition text-sm disabled:opacity-50"
+                >
+                  <ShoppingCart size={16} />
+                  Jual
+                </button>
+                <button
+                  onClick={() => handleOpenRetur(detail)}
+                  disabled={detail.jumlah_sisa <= 0}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-lg transition text-sm disabled:opacity-50"
+                >
+                  <RotateCcw size={16} />
+                  Retur
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop Table - Detail Barang */}
+      <div className="hidden lg:block bg-white rounded-xl shadow-lg p-6 mb-6">
         <h2 className="text-lg font-bold text-gray-800 mb-4">Detail Barang</h2>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead className="bg-indigo-100">
               <tr>
-                <th className="px-4 py-3 text-left border">Produk</th>
-                <th className="px-4 py-3 text-right border">Titip</th>
-                <th className="px-4 py-3 text-right border">Terjual</th>
-                <th className="px-4 py-3 text-right border">Sisa</th>
-                <th className="px-4 py-3 text-right border">Kembali</th>
-                <th className="px-4 py-3 text-right border">Harga Kita</th>
-                <th className="px-4 py-3 text-right border">Harga Toko</th>
-                <th className="px-4 py-3 text-right border">Subtotal</th>
+                <th className="px-4 py-3 text-left border border-indigo-200">Produk</th>
+                <th className="px-4 py-3 text-right border border-indigo-200">Titip</th>
+                <th className="px-4 py-3 text-right border border-indigo-200">Terjual</th>
+                <th className="px-4 py-3 text-right border border-indigo-200">Sisa</th>
+                <th className="px-4 py-3 text-right border border-indigo-200">Kembali</th>
+                <th className="px-4 py-3 text-right border border-indigo-200">Harga Kita</th>
+                <th className="px-4 py-3 text-right border border-indigo-200">Harga Toko</th>
+                <th className="px-4 py-3 text-right border border-indigo-200">Subtotal</th>
                 {data.status === 'Aktif' && (
-                  <th className="px-4 py-3 text-center border">Action</th>
+                  <th className="px-4 py-3 text-center border border-indigo-200">Action</th>
                 )}
               </tr>
             </thead>
             <tbody>
-              {data.detail_konsinyasi?.map((detail) => (
-                <tr key={detail.id} className="border-b hover:bg-indigo-50">
-                  <td className="px-4 py-3 border">
+              {data.detail_konsinyasi?.map((detail, index) => (
+                <tr key={detail.id} className={`border-b border-indigo-200 ${index % 2 === 0 ? 'bg-white' : 'bg-indigo-50'} hover:bg-indigo-100`}>
+                  <td className="px-4 py-3 border border-indigo-200">
                     <div>
                       <p className="font-medium">{detail.produk?.nama_produk}</p>
                       <p className="text-sm text-gray-600">{detail.produk?.kode_produk}</p>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-right border">{detail.jumlah_titip}</td>
-                  <td className="px-4 py-3 text-right border text-green-600">{detail.jumlah_terjual}</td>
-                  <td className="px-4 py-3 text-right border text-blue-600">{detail.jumlah_sisa}</td>
-                  <td className="px-4 py-3 text-right border text-orange-600">{detail.jumlah_kembali}</td>
-                  <td className="px-4 py-3 text-right border">
+                  <td className="px-4 py-3 text-right border border-indigo-200">{detail.jumlah_titip}</td>
+                  <td className="px-4 py-3 text-right border border-indigo-200 text-green-600 font-medium">{detail.jumlah_terjual}</td>
+                  <td className="px-4 py-3 text-right border border-indigo-200 text-blue-600 font-medium">{detail.jumlah_sisa}</td>
+                  <td className="px-4 py-3 text-right border border-indigo-200 text-orange-600 font-medium">{detail.jumlah_kembali}</td>
+                  <td className="px-4 py-3 text-right border border-indigo-200">
                     Rp {detail.harga_konsinyasi.toLocaleString('id-ID')}
                   </td>
-                  <td className="px-4 py-3 text-right border">
+                  <td className="px-4 py-3 text-right border border-indigo-200">
                     Rp {detail.harga_jual_toko.toLocaleString('id-ID')}
                   </td>
-                  <td className="px-4 py-3 text-right border">
+                  <td className="px-4 py-3 text-right border border-indigo-200 font-semibold">
                     Rp {(detail.jumlah_terjual * detail.harga_konsinyasi).toLocaleString('id-ID')}
                   </td>
                   {data.status === 'Aktif' && (
-                    <td className="px-4 py-3 border">
+                    <td className="px-4 py-3 border border-indigo-200">
                       <div className="flex justify-center gap-2">
                         <button
                           onClick={() => handleOpenPenjualan(detail)}
                           disabled={detail.jumlah_sisa <= 0}
-                          className="p-2 text-green-600 hover:bg-green-100 rounded transition disabled:opacity-50"
+                          className="text-green-600 hover:text-green-800 transition disabled:opacity-50"
                           title="Input Penjualan"
                         >
                           <ShoppingCart size={18} />
@@ -497,7 +570,7 @@ export default function DetailKonsinyasiPage() {
                         <button
                           onClick={() => handleOpenRetur(detail)}
                           disabled={detail.jumlah_sisa <= 0}
-                          className="p-2 text-orange-600 hover:bg-orange-100 rounded transition disabled:opacity-50"
+                          className="text-orange-600 hover:text-orange-800 transition disabled:opacity-50"
                           title="Retur Barang"
                         >
                           <RotateCcw size={18} />
@@ -512,82 +585,143 @@ export default function DetailKonsinyasiPage() {
         </div>
       </div>
 
-      {/* Riwayat Penjualan */}
+     {/* Riwayat Penjualan - Mobile Cards */}
       {penjualanList.length > 0 && (
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h2 className="text-lg font-bold text-gray-800 mb-4">Riwayat Penjualan</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse">
-              <thead className="bg-green-100">
-                <tr>
-                  <th className="px-4 py-3 text-left border">Tanggal</th>
-                  <th className="px-4 py-3 text-left border">Produk</th>
-                  <th className="px-4 py-3 text-right border">Jumlah</th>
-                  <th className="px-4 py-3 text-right border">Total Nilai</th>
-                  <th className="px-4 py-3 text-left border">Kas</th>
-                  <th className="px-4 py-3 text-left border">Status</th>
-                  {data?.status === 'Aktif' && (
-                    <th className="px-4 py-3 text-center border">Action</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {penjualanList.map((penjualan) => (
-                  <tr key={penjualan.id} className="border-b hover:bg-green-50">
-                    <td className="px-4 py-3 border">
-                      {new Date(penjualan.tanggal_jual).toLocaleDateString('id-ID')}
-                    </td>
-                    <td className="px-4 py-3 border">
-                      <div>
-                        <p className="font-medium">{penjualan.detail_konsinyasi?.produk?.nama_produk}</p>
-                        <p className="text-sm text-gray-600">{penjualan.detail_konsinyasi?.produk?.kode_produk}</p>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-right border">
-                      {penjualan.jumlah_terjual} {penjualan.detail_konsinyasi?.produk?.satuan}
-                    </td>
-                    <td className="px-4 py-3 text-right border font-medium text-green-600">
+        <>
+          <div className="block lg:hidden space-y-3">
+            <h2 className="text-base sm:text-lg font-bold text-gray-800 bg-white p-4 rounded-t-xl shadow-lg">Riwayat Penjualan</h2>
+            {penjualanList.map((penjualan) => (
+              <div key={penjualan.id} className="bg-white rounded-xl shadow-lg p-4 border-l-4 border-green-500">
+                <div className="mb-3">
+                  <div className="font-semibold text-green-700">{penjualan.detail_konsinyasi?.produk?.nama_produk}</div>
+                  <div className="text-xs text-gray-500">
+                    {new Date(penjualan.tanggal_jual).toLocaleDateString('id-ID')}
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-sm mb-3">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Jumlah:</span>
+                    <span className="font-medium">{penjualan.jumlah_terjual} {penjualan.detail_konsinyasi?.produk?.satuan}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Total Nilai:</span>
+                    <span className="font-semibold text-green-600">
                       Rp {parseFloat(penjualan.total_nilai_kita).toLocaleString('id-ID')}
-                    </td>
-                    <td className="px-4 py-3 border">
-                      <div>
-                        <p className="font-medium">{penjualan.kas?.nama_kas || '-'}</p>
-                        <p className="text-sm text-gray-600">{penjualan.kas?.tipe_kas}</p>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 border">
-                      <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
-                        penjualan.status_pembayaran === 'Sudah Dibayar' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {penjualan.status_pembayaran}
-                      </span>
-                    </td>
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Kas:</span>
+                    <span className="font-medium">{penjualan.kas?.nama_kas || '-'}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Status:</span>
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      penjualan.status_pembayaran === 'Sudah Dibayar' 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {penjualan.status_pembayaran}
+                    </span>
+                  </div>
+                </div>
+
+                {data?.status === 'Aktif' && (
+                  <div className="flex gap-2 pt-3 border-t border-gray-200">
+                    <button
+                      onClick={() => handleOpenEdit(penjualan.id)}
+                      className="flex-1 px-3 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition font-medium"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDeletePenjualan(penjualan.id)}
+                      className="flex-1 px-3 py-2 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition font-medium"
+                    >
+                      Hapus
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Riwayat Penjualan - Desktop Table */}
+          <div className="hidden lg:block bg-white rounded-xl shadow-lg p-6">
+            <h2 className="text-lg font-bold text-gray-800 mb-4">Riwayat Penjualan</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead className="bg-green-100">
+                  <tr>
+                    <th className="px-4 py-3 text-left border border-green-200">Tanggal</th>
+                    <th className="px-4 py-3 text-left border border-green-200">Produk</th>
+                    <th className="px-4 py-3 text-right border border-green-200">Jumlah</th>
+                    <th className="px-4 py-3 text-right border border-green-200">Total Nilai</th>
+                    <th className="px-4 py-3 text-left border border-green-200">Kas</th>
+                    <th className="px-4 py-3 text-left border border-green-200">Status</th>
                     {data?.status === 'Aktif' && (
-                      <td className="px-4 py-3 border">
-                        <div className="flex justify-center gap-2">
-                          <button
-                            onClick={() => handleOpenEdit(penjualan.id)}
-                            className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition font-medium"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDeletePenjualan(penjualan.id)}
-                            className="px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition font-medium"
-                          >
-                            Hapus
-                          </button>
-                        </div>
-                      </td>
+                      <th className="px-4 py-3 text-center border border-green-200">Action</th>
                     )}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {penjualanList.map((penjualan, index) => (
+                    <tr key={penjualan.id} className={`border-b border-green-200 ${index % 2 === 0 ? 'bg-white' : 'bg-green-50'} hover:bg-green-100`}>
+                      <td className="px-4 py-3 border border-green-200">
+                        {new Date(penjualan.tanggal_jual).toLocaleDateString('id-ID')}
+                      </td>
+                      <td className="px-4 py-3 border border-green-200">
+                        <div>
+                          <p className="font-medium">{penjualan.detail_konsinyasi?.produk?.nama_produk}</p>
+                          <p className="text-sm text-gray-600">{penjualan.detail_konsinyasi?.produk?.kode_produk}</p>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right border border-green-200">
+                        {penjualan.jumlah_terjual} {penjualan.detail_konsinyasi?.produk?.satuan}
+                      </td>
+                      <td className="px-4 py-3 text-right border border-green-200 font-semibold text-green-600">
+                        Rp {parseFloat(penjualan.total_nilai_kita).toLocaleString('id-ID')}
+                      </td>
+                      <td className="px-4 py-3 border border-green-200">
+                        <div>
+                          <p className="font-medium">{penjualan.kas?.nama_kas || '-'}</p>
+                          <p className="text-sm text-gray-600">{penjualan.kas?.tipe_kas}</p>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 border border-green-200">
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                          penjualan.status_pembayaran === 'Sudah Dibayar' 
+                            ? 'bg-green-100 text-green-800' 
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {penjualan.status_pembayaran}
+                        </span>
+                      </td>
+                      {data?.status === 'Aktif' && (
+                        <td className="px-4 py-3 border border-green-200">
+                          <div className="flex justify-center gap-2">
+                            <button
+                              onClick={() => handleOpenEdit(penjualan.id)}
+                              className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition font-medium"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeletePenjualan(penjualan.id)}
+                              className="px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition font-medium"
+                            >
+                              Hapus
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* Modal Penjualan & Edit */}

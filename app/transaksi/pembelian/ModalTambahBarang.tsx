@@ -112,6 +112,7 @@ export default function ModalTambahBarang({ isOpen, onClose, onSuccess, pembelia
     onClose();
   };
 
+  // ✅ HANYA SATU CHECK - HAPUS YANG DUPLIKAT
   if (!isOpen) return null;
 
   return (

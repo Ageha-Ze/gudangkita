@@ -87,7 +87,9 @@ export async function POST(request: NextRequest) {
     const supabase = await supabaseServer();
     const body = await request.json();
 
-    // Validasi
+    console.log('📦 Creating konsinyasi:', body);
+
+    // ✅ Validasi
     if (!body.tanggal_titip || !body.toko_id || !body.cabang_id) {
       return NextResponse.json(
         { error: 'Tanggal, Toko, dan Cabang wajib diisi' },
@@ -102,15 +104,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate kode konsinyasi: KON-YYYYMMDD-0001
+    // ✅ Validasi: Cek stock availability (info saja, tidak dikurangi)
+    for (const item of body.detail) {
+      const { data: produk } = await supabase
+        .from('produk')
+        .select('stok, nama_produk')
+        .eq('id', item.produk_id)
+        .single();
+
+      if (produk) {
+        const stokTersedia = parseFloat(produk.stok?.toString() || '0');
+        const jumlahDiminta = parseFloat(item.jumlah_titip?.toString() || '0');
+
+        if (stokTersedia < jumlahDiminta) {
+          return NextResponse.json({
+            error: `Stock ${produk.nama_produk} tidak mencukupi! Tersedia: ${stokTersedia}, Diminta: ${jumlahDiminta}`
+          }, { status: 400 });
+        }
+      }
+    }
+
+    // ✅ Generate kode konsinyasi: KON-YYYYMMDD-0001
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
     
     const { data: lastKonsinyasi } = await supabase
       .from('transaksi_konsinyasi')
       .select('kode_konsinyasi')
+      .like('kode_konsinyasi', `KON-${today}-%`)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     let nomorUrut = 1;
     if (lastKonsinyasi?.kode_konsinyasi) {
@@ -120,12 +143,14 @@ export async function POST(request: NextRequest) {
 
     const kode_konsinyasi = `KON-${today}-${nomorUrut.toString().padStart(4, '0')}`;
 
-    // Calculate total nilai titip
+    console.log('📝 Generated code:', kode_konsinyasi);
+
+    // ✅ Calculate total nilai titip
     const total_nilai_titip = body.detail.reduce((sum: number, item: any) => 
-      sum + (item.jumlah_titip * item.harga_konsinyasi), 0
+      sum + (parseFloat(item.jumlah_titip) * parseFloat(item.harga_konsinyasi)), 0
     );
 
-    // Insert transaksi konsinyasi
+    // ✅ Insert transaksi konsinyasi
     const { data: konsinyasi, error: konsinyasiError } = await supabase
       .from('transaksi_konsinyasi')
       .insert({
@@ -135,25 +160,30 @@ export async function POST(request: NextRequest) {
         cabang_id: body.cabang_id,
         pegawai_id: body.pegawai_id || null,
         total_nilai_titip,
-        status: 'Aktif',
+        status: 'aktif',
         keterangan: body.keterangan || null,
       })
       .select()
       .single();
 
-    if (konsinyasiError) throw konsinyasiError;
+    if (konsinyasiError) {
+      console.error('Error inserting konsinyasi:', konsinyasiError);
+      throw konsinyasiError;
+    }
 
-    // Insert detail konsinyasi
+    console.log('✅ Konsinyasi created:', konsinyasi.id);
+
+    // ✅ Insert detail konsinyasi
     const detailData = body.detail.map((item: any) => ({
       konsinyasi_id: konsinyasi.id,
       produk_id: item.produk_id,
-      jumlah_titip: item.jumlah_titip,
-      jumlah_sisa: item.jumlah_titip, // Awalnya sama dengan jumlah titip
+      jumlah_titip: parseFloat(item.jumlah_titip),
+      jumlah_sisa: parseFloat(item.jumlah_titip), // Awalnya sama dengan jumlah titip
       jumlah_terjual: 0,
       jumlah_kembali: 0,
-      harga_konsinyasi: item.harga_konsinyasi,
-      harga_jual_toko: item.harga_jual_toko,
-      subtotal_nilai_titip: item.jumlah_titip * item.harga_konsinyasi,
+      harga_konsinyasi: parseFloat(item.harga_konsinyasi),
+      harga_jual_toko: parseFloat(item.harga_jual_toko),
+      subtotal_nilai_titip: parseFloat(item.jumlah_titip) * parseFloat(item.harga_konsinyasi),
       keuntungan_toko: 0,
     }));
 
@@ -162,6 +192,7 @@ export async function POST(request: NextRequest) {
       .insert(detailData);
 
     if (detailError) {
+      console.error('Error inserting detail:', detailError);
       // Rollback: hapus transaksi konsinyasi
       await supabase
         .from('transaksi_konsinyasi')
@@ -171,60 +202,42 @@ export async function POST(request: NextRequest) {
       throw detailError;
     }
 
-    // Update stock produk (kurangi stock karena dititipkan)
-    for (const item of body.detail) {
-      const { data: produk } = await supabase
-        .from('produk')
-        .select('stok')
-        .eq('id', item.produk_id)
-        .single();
+    console.log('✅ Detail konsinyasi created');
 
-      if (produk) {
-        const newStok = parseFloat(produk.stok) - parseFloat(item.jumlah_titip);
-        
-        await supabase
-          .from('produk')
-          .update({ stok: newStok })
-          .eq('id', item.produk_id);
+    // ❌ TIDAK ADA UPDATE STOCK DI SINI!
+    // Stock TIDAK dikurangi saat kirim konsinyasi
+    // Stock baru dikurangi saat ada penjualan dari toko
+    console.log('ℹ️ Stock NOT reduced (konsinyasi = pinjam barang, masih milik kita)');
 
-        // Insert stock movement
-        await supabase
-          .from('stock_barang')
-          .insert({
-            produk_id: item.produk_id,
-            cabang_id: body.cabang_id,
-            jumlah: item.jumlah_titip,
-            tanggal: body.tanggal_titip,
-            tipe: 'keluar',
-            keterangan: `Konsinyasi ke toko - ${kode_konsinyasi}`,
-          });
-      }
-    }
-
-    // Fetch complete data
+    // ✅ Fetch complete data
     const { data: completeData } = await supabase
       .from('transaksi_konsinyasi')
       .select(`
         *,
-        toko:toko_id (id, nama_toko),
-        cabang:cabang_id (id, nama_cabang),
+        toko:toko_id (id, nama_toko, kode_toko),
+        cabang:cabang_id (id, nama_cabang, kode_cabang),
         pegawai:pegawai_id (id, nama),
         detail_konsinyasi (
           *,
-          produk:produk_id (id, nama_produk, kode_produk)
+          produk:produk_id (id, nama_produk, kode_produk, satuan)
         )
       `)
       .eq('id', konsinyasi.id)
       .single();
 
+    console.log('✅ Konsinyasi created successfully');
+
     return NextResponse.json({
       success: true,
-      message: 'Konsinyasi berhasil dibuat',
+      message: 'Konsinyasi berhasil dibuat. Stock akan dikurangi saat ada penjualan dari toko.',
       data: completeData,
+      note: 'Stock produk tidak dikurangi karena barang masih milik kita (hanya dititipkan ke toko)'
     });
   } catch (error: any) {
-    console.error('Error creating konsinyasi:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('❌ Error creating konsinyasi:', error);
+    return NextResponse.json({ 
+      error: error.message || 'Gagal membuat konsinyasi'
+    }, { status: 500 });
   }
 }
 
@@ -242,15 +255,23 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // 1. Get detail konsinyasi untuk kembalikan stock
+    console.log('🗑️ Deleting konsinyasi:', id);
+
+    // ✅ 1. Get detail konsinyasi lengkap
     const { data: konsinyasi, error: konsinyasiError } = await supabase
       .from('transaksi_konsinyasi')
       .select(`
         *,
         detail_konsinyasi (
-          *,
+          id,
+          produk_id,
+          jumlah_titip,
+          jumlah_terjual,
+          jumlah_sisa,
+          jumlah_kembali,
           produk:produk_id (
             id,
+            nama_produk,
             stok
           )
         )
@@ -259,95 +280,92 @@ export async function DELETE(request: NextRequest) {
       .single();
 
     if (konsinyasiError || !konsinyasi) {
+      console.error('Error fetching konsinyasi:', konsinyasiError);
       return NextResponse.json(
         { error: 'Konsinyasi tidak ditemukan' },
         { status: 404 }
       );
     }
 
-    // 2. Cek status - hanya bisa hapus jika Aktif
-    if (konsinyasi.status === 'Selesai') {
+    console.log('📦 Konsinyasi:', konsinyasi.kode_konsinyasi);
+    console.log('📊 Status:', konsinyasi.status);
+
+    // ✅ 2. Validasi: Tidak bisa hapus jika status final
+    if (konsinyasi.status === 'selesai') {
       return NextResponse.json(
         { error: 'Tidak dapat menghapus konsinyasi yang sudah selesai' },
         { status: 400 }
       );
     }
 
-    // 3. Hapus penjualan konsinyasi terkait
-    const { error: deletePenjualanError } = await supabase
+    // ✅ 3. Validasi: Cek apakah ada penjualan
+    const { data: penjualan } = await supabase
       .from('penjualan_konsinyasi')
-      .delete()
+      .select('id, jumlah_terjual, total_nilai_kita, kas_id')
       .in('detail_konsinyasi_id', konsinyasi.detail_konsinyasi.map((d: any) => d.id));
 
-    if (deletePenjualanError) {
-      console.error('Error deleting penjualan:', deletePenjualanError);
+    if (penjualan && penjualan.length > 0) {
+      const totalTerjual = penjualan.reduce((sum, p) => 
+        sum + parseFloat(p.jumlah_terjual?.toString() || '0'), 0
+      );
+      
+      return NextResponse.json({
+        error: `Tidak dapat menghapus konsinyasi yang sudah ada penjualan (${totalTerjual} pcs terjual). Selesaikan konsinyasi terlebih dahulu.`
+      }, { status: 400 });
     }
 
-    // 4. Hapus retur konsinyasi terkait
+    console.log('✅ No sales found, safe to delete');
+
+    // ✅ 4. Hapus retur konsinyasi terkait (jika ada)
     const { error: deleteReturError } = await supabase
       .from('retur_konsinyasi')
       .delete()
       .in('detail_konsinyasi_id', konsinyasi.detail_konsinyasi.map((d: any) => d.id));
 
     if (deleteReturError) {
-      console.error('Error deleting retur:', deleteReturError);
+      console.error('⚠️ Warning: Error deleting retur:', deleteReturError);
+    } else {
+      console.log('✅ Retur deleted (if any)');
     }
 
-    // 5. Kembalikan stock produk (hanya yang belum terjual/retur)
-    for (const detail of konsinyasi.detail_konsinyasi) {
-      if (detail.jumlah_sisa > 0) {
-        // Kembalikan stock yang masih di toko
-        const { data: produk } = await supabase
-          .from('produk')
-          .select('stok')
-          .eq('id', detail.produk_id)
-          .single();
+    // ❌ TIDAK ADA STOCK RETURN DI SINI!
+    // Karena stock tidak dikurangi saat kirim konsinyasi,
+    // maka tidak perlu dikembalikan saat delete
+    console.log('ℹ️ Stock NOT returned (was never reduced)');
 
-        if (produk) {
-          const newStok = parseFloat(produk.stok) + parseFloat(detail.jumlah_sisa);
-          
-          await supabase
-            .from('produk')
-            .update({ stok: newStok })
-            .eq('id', detail.produk_id);
-
-          // Insert stock movement untuk tracking
-          await supabase
-            .from('stock_barang')
-            .insert({
-              produk_id: detail.produk_id,
-              cabang_id: konsinyasi.cabang_id,
-              jumlah: detail.jumlah_sisa,
-              tanggal: new Date().toISOString().split('T')[0],
-              tipe: 'masuk',
-              keterangan: `Pembatalan konsinyasi - ${konsinyasi.kode_konsinyasi}`,
-            });
-        }
-      }
-    }
-
-    // 6. Hapus detail konsinyasi
+    // ✅ 5. Hapus detail konsinyasi
     const { error: deleteDetailError } = await supabase
       .from('detail_konsinyasi')
       .delete()
       .eq('konsinyasi_id', id);
 
-    if (deleteDetailError) throw deleteDetailError;
+    if (deleteDetailError) {
+      console.error('Error deleting detail:', deleteDetailError);
+      throw deleteDetailError;
+    }
 
-    // 7. Hapus transaksi konsinyasi
+    console.log('✅ Detail konsinyasi deleted');
+
+    // ✅ 6. Hapus transaksi konsinyasi
     const { error: deleteKonsinyasiError } = await supabase
       .from('transaksi_konsinyasi')
       .delete()
       .eq('id', id);
 
-    if (deleteKonsinyasiError) throw deleteKonsinyasiError;
+    if (deleteKonsinyasiError) {
+      console.error('Error deleting konsinyasi:', deleteKonsinyasiError);
+      throw deleteKonsinyasiError;
+    }
+
+    console.log('✅ Konsinyasi deleted');
 
     return NextResponse.json({
       success: true,
-      message: 'Konsinyasi berhasil dihapus dan stock dikembalikan',
+      message: 'Konsinyasi berhasil dihapus',
+      note: 'Stock tidak berubah karena tidak pernah dikurangi saat kirim konsinyasi'
     });
   } catch (error: any) {
-    console.error('Error deleting konsinyasi:', error);
+    console.error('❌ Error deleting konsinyasi:', error);
     return NextResponse.json({ 
       error: error.message || 'Terjadi kesalahan saat menghapus konsinyasi' 
     }, { status: 500 });

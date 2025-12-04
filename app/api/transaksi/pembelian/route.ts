@@ -109,7 +109,9 @@ export async function POST(request: NextRequest) {
     const supabase = await supabaseServer();
     const body = await request.json();
 
-    // Validasi required fields
+    console.log('🛒 Creating pembelian:', body);
+
+    // ✅ Validasi required fields
     if (!body.tanggal || !body.suplier_id || !body.cabang_id) {
       return NextResponse.json(
         { error: 'Tanggal, Supplier, dan Cabang wajib diisi' },
@@ -117,15 +119,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate nota supplier
+    // ✅ Validasi kas_id jika ada uang muka
+    const uangMuka = body.show_uang_muka ? parseFloat(body.uang_muka || '0') : 0;
+    
+    if (uangMuka > 0 && !body.kas_id) {
+      return NextResponse.json(
+        { error: 'Kas wajib dipilih jika ada uang muka' },
+        { status: 400 }
+      );
+    }
+
+    // ✅ Generate nota supplier (improved: filter by today's date)
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
 
     const { data: lastPembelian } = await supabase
       .from('transaksi_pembelian')
       .select('nota_supplier')
+      .like('nota_supplier', `PB-${today}-%`)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     let notaNumber = 1;
 
@@ -136,24 +149,40 @@ export async function POST(request: NextRequest) {
 
     const nota_supplier = `PB-${today}-${notaNumber.toString().padStart(4, '0')}`;
 
-    // Prepare pembelian data
+    console.log('📝 Generated nota:', nota_supplier);
+
+    // ✅ Prepare initial totals (will be recalculated after detail added)
+    const biayaKirim = body.show_biaya_kirim ? parseFloat(body.biaya_kirim || '0') : 0;
+
+    // ✅ Determine initial status_pembayaran
+    // Will be updated later if uang_muka >= finalTotal
+    let statusPembayaran = 'Belum Lunas';
+    if (body.jenis_pembayaran === 'Tunai' && uangMuka > 0) {
+      // Will check against finalTotal after calculating
+      statusPembayaran = 'Belum Lunas'; // Default, will update later
+    }
+
+    // ✅ Prepare pembelian data
     const pembelianData = {
       tanggal: body.tanggal,
       suplier_id: body.suplier_id,
       cabang_id: body.cabang_id,
       nota_supplier,
-      total: 0,
-      biaya_kirim: body.show_biaya_kirim ? (body.biaya_kirim || 0) : 0,
-      uang_muka: body.show_uang_muka ? (body.uang_muka || 0) : 0,
+      total: 0, // Will be calculated from detail
+      biaya_kirim: biayaKirim,
+      uang_muka: uangMuka,
+      kas_id: body.kas_id || null,
       jenis_pembayaran: body.jenis_pembayaran || 'Tunai',
       status: 'pending',
       status_barang: 'Belum Diterima',
-      status_pembayaran: body.jenis_pembayaran === 'Tunai' ? 'Lunas' : 'Belum Lunas',
+      status_pembayaran: statusPembayaran,
       keterangan: body.keterangan || '',
     };
 
-    // Insert pembelian
-    const { data, error } = await supabase
+    console.log('📦 Pembelian data:', pembelianData);
+
+    // ✅ Insert pembelian
+    const { data: pembelian, error: insertError } = await supabase
       .from('transaksi_pembelian')
       .insert(pembelianData)
       .select(`
@@ -163,15 +192,102 @@ export async function POST(request: NextRequest) {
       `)
       .single();
 
-    if (error) throw error;
+    if (insertError) {
+      console.error('Error inserting pembelian:', insertError);
+      throw insertError;
+    }
 
-    // Compute canonical totals and attach for client convenience
-    let pembelianEnriched: any = data;
+    console.log('✅ Pembelian created:', pembelian.id);
+
+    // ✅ Update kas jika ada uang muka
+    if (uangMuka > 0 && body.kas_id) {
+      console.log('💰 Processing uang muka:', uangMuka);
+
+      // Get current saldo kas
+      const { data: kas, error: kasError } = await supabase
+        .from('kas')
+        .select('saldo, nama_kas')
+        .eq('id', body.kas_id)
+        .single();
+
+      if (kasError) {
+        console.error('Error fetching kas:', kasError);
+        // Rollback pembelian
+        await supabase
+          .from('transaksi_pembelian')
+          .delete()
+          .eq('id', pembelian.id);
+        
+        return NextResponse.json({
+          error: 'Kas tidak ditemukan'
+        }, { status: 404 });
+      }
+
+      const saldoLama = parseFloat(kas.saldo?.toString() || '0');
+
+      // ✅ Validasi: Cek saldo mencukupi
+      if (saldoLama < uangMuka) {
+        // Rollback pembelian
+        await supabase
+          .from('transaksi_pembelian')
+          .delete()
+          .eq('id', pembelian.id);
+        
+        return NextResponse.json({
+          error: `Saldo kas ${kas.nama_kas} tidak mencukupi. Tersedia: ${saldoLama}, Dibutuhkan: ${uangMuka}`
+        }, { status: 400 });
+      }
+
+      const saldoBaru = saldoLama - uangMuka;
+
+      console.log(`  ${kas.nama_kas}: ${saldoLama} - ${uangMuka} = ${saldoBaru}`);
+
+      // Update saldo kas
+      const { error: updateKasError } = await supabase
+        .from('kas')
+        .update({ 
+          saldo: saldoBaru,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', body.kas_id);
+
+      if (updateKasError) {
+        console.error('Error updating kas:', updateKasError);
+        // Rollback pembelian
+        await supabase
+          .from('transaksi_pembelian')
+          .delete()
+          .eq('id', pembelian.id);
+        
+        throw new Error('Gagal update saldo kas');
+      }
+
+      // Insert transaksi kas
+      const { error: transaksiKasError } = await supabase
+        .from('transaksi_kas')
+        .insert({
+          kas_id: body.kas_id,
+          tanggal_transaksi: body.tanggal,
+          debit: uangMuka, // Debit = uang keluar
+          kredit: 0,
+          keterangan: `Uang muka pembelian ${nota_supplier}`
+        });
+
+      if (transaksiKasError) {
+        console.error('⚠️ Warning: Failed to record transaksi kas:', transaksiKasError);
+        // Don't rollback, saldo already updated
+      }
+
+      console.log('✅ Kas updated & transaksi recorded');
+    }
+
+    // ✅ Compute canonical totals and attach for client
+    let pembelianEnriched: any = pembelian;
     try {
       const { subtotal, finalTotal } = calculatePembelianTotals(pembelianEnriched as any);
       
       // Calculate initial tagihan (before any cicilan)
-      const tagihan = finalTotal - (pembelianEnriched.uang_muka || 0);
+      const tagihan = finalTotal - uangMuka;
       
       pembelianEnriched = { 
         ...pembelianEnriched, 
@@ -179,34 +295,36 @@ export async function POST(request: NextRequest) {
         finalTotal, 
         tagihan: Math.max(0, tagihan)
       };
+
+      console.log('💵 Totals:', { subtotal, finalTotal, tagihan });
+
+      // ✅ Update status pembayaran if uang_muka >= finalTotal
+      if (uangMuka >= finalTotal && finalTotal > 0) {
+        await supabase
+          .from('transaksi_pembelian')
+          .update({ status_pembayaran: 'Lunas' })
+          .eq('id', pembelian.id);
+        
+        pembelianEnriched.status_pembayaran = 'Lunas';
+        console.log('✅ Status pembayaran: Lunas');
+      }
     } catch (e) {
       console.error('Error calculating totals:', e);
     }
 
-    // If payment is Tunai and uang_muka equals finalTotal, update status
-    if (pembelianData.jenis_pembayaran === 'Tunai') {
-      const { subtotal, finalTotal } = calculatePembelianTotals(pembelianEnriched as any);
-      
-      if (pembelianData.uang_muka >= finalTotal) {
-        await supabase
-          .from('transaksi_pembelian')
-          .update({ status_pembayaran: 'Lunas' })
-          .eq('id', data.id);
-        
-        pembelianEnriched.status_pembayaran = 'Lunas';
-      }
-    }
+    console.log('✅ Pembelian created successfully');
 
     return NextResponse.json({
       success: true,
-      data,
+      data: pembelian,
       pembelian: pembelianEnriched,
-      message: 'Pembelian berhasil dibuat',
+      message: 'Pembelian berhasil dibuat' + (uangMuka > 0 ? ' dan uang muka tercatat' : ''),
+      kas_updated: uangMuka > 0
     });
   } catch (error: any) {
-    console.error('Error creating pembelian:', error);
+    console.error('❌ Error creating pembelian:', error);
     return NextResponse.json(
-      { error: error.message },
+      { error: error.message || 'Gagal membuat pembelian' },
       { status: 500 }
     );
   }

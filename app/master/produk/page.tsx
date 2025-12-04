@@ -225,16 +225,7 @@ export default function ProdukPage() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-              <div className="flex gap-2">
-                <button className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                  <Filter size={16} />
-                  <span className="hidden sm:inline">Filter</span>
-                </button>
-                <button className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                  <Download size={16} />
-                  <span className="hidden sm:inline">Export</span>
-                </button>
-              </div>
+              
             </div>
           </div>
 

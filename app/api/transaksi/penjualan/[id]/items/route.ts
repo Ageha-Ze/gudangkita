@@ -14,15 +14,51 @@ export async function POST(
     const { id: penjualan_id } = await context.params;
     const body = await request.json();
 
-    console.log('Adding item to penjualan:', penjualan_id, body);
+    console.log('➕ Adding item to penjualan:', penjualan_id, body);
 
-    // Insert detail penjualan
+    // ✅ Validasi: Cek apakah penjualan sudah dikonfirmasi
+    const { data: penjualan, error: penjualanError } = await supabase
+      .from('transaksi_penjualan')
+      .select('status, status_diterima')
+      .eq('id', penjualan_id)
+      .single();
+
+    if (penjualanError) throw penjualanError;
+
+    // Tidak bisa tambah item jika sudah dikonfirmasi
+    if (penjualan.status_diterima === 'Diterima') {
+      return NextResponse.json({
+        error: 'Tidak bisa menambah item pada penjualan yang sudah dikonfirmasi'
+      }, { status: 400 });
+    }
+
+    // ✅ Validasi: Cek stock availability (info saja, tidak dikurangi)
+    const { data: produk, error: produkError } = await supabase
+      .from('produk')
+      .select('stok, nama_produk')
+      .eq('id', body.produk_id)
+      .single();
+
+    if (produkError) throw produkError;
+
+    const stokTersedia = parseFloat(produk.stok?.toString() || '0');
+    const jumlahDiminta = parseFloat(body.jumlah?.toString() || '0');
+
+    if (stokTersedia < jumlahDiminta) {
+      return NextResponse.json({
+        error: `Stock ${produk.nama_produk} tidak mencukupi! Tersedia: ${stokTersedia}, Diminta: ${jumlahDiminta}`
+      }, { status: 400 });
+    }
+
+    console.log(`  ℹ️ Stock check: ${produk.nama_produk} = ${stokTersedia} (cukup untuk ${jumlahDiminta})`);
+
+    // ✅ Insert detail penjualan (TANPA mengurangi stock)
     const detailData = {
       penjualan_id: parseInt(penjualan_id),
       produk_id: body.produk_id,
-      jumlah: body.jumlah,
-      harga: body.harga,
-      subtotal: body.jumlah * body.harga
+      jumlah: jumlahDiminta,
+      harga: parseFloat(body.harga?.toString() || '0'),
+      subtotal: jumlahDiminta * parseFloat(body.harga?.toString() || '0')
     };
 
     const { data: detail, error: detailError } = await supabase
@@ -36,52 +72,44 @@ export async function POST(
 
     if (detailError) throw detailError;
 
-    // Update total penjualan
+    console.log('  ✅ Item added (stock NOT reduced yet)');
+
+    // ✅ Update total penjualan
     const { data: allDetails } = await supabase
       .from('detail_penjualan')
       .select('subtotal')
       .eq('penjualan_id', penjualan_id);
 
-    const total = allDetails?.reduce((sum, item) => sum + parseFloat(item.subtotal.toString()), 0) || 0;
+    const total = allDetails?.reduce(
+      (sum, item) => sum + parseFloat(item.subtotal?.toString() || '0'), 
+      0
+    ) || 0;
 
-    await supabase
+    const { error: updateTotalError } = await supabase
       .from('transaksi_penjualan')
       .update({ total })
       .eq('id', penjualan_id);
 
-    // Kurangi stock barang
-    const { data: produk } = await supabase
-      .from('produk')
-      .select('stok')
-      .eq('id', body.produk_id)
-      .single();
+    if (updateTotalError) throw updateTotalError;
 
-    if (produk) {
-      const newStok = parseFloat(produk.stok) - parseFloat(body.jumlah);
-      await supabase
-        .from('produk')
-        .update({ stok: newStok })
-        .eq('id', body.produk_id);
+    console.log(`  💰 Total updated: ${total}`);
 
-      // Insert history ke stock_barang
-      await supabase
-        .from('stock_barang')
-        .insert({
-          produk_id: body.produk_id,
-          cabang_id: body.cabang_id,
-          jumlah: body.jumlah,
-          tanggal: new Date().toISOString().split('T')[0],
-          tipe: 'keluar',
-          keterangan: `Penjualan #${penjualan_id}`
-        });
-    }
+    // ❌ TIDAK ADA PENGURANGAN STOCK DI SINI!
+    // Stock akan dikurangi saat konfirmasi "Diterima" di route konfirmasi/route.ts
 
     return NextResponse.json({ 
+      success: true,
       data: detail, 
-      message: 'Item berhasil ditambahkan' 
+      message: 'Item berhasil ditambahkan. Stock akan dikurangi saat konfirmasi penerimaan.',
+      stock_info: {
+        product: produk.nama_produk,
+        available: stokTersedia,
+        reserved: jumlahDiminta,
+        remaining: stokTersedia - jumlahDiminta
+      }
     });
   } catch (error: any) {
-    console.error('Error:', error);
+    console.error('❌ Error adding item:', error);
     return NextResponse.json(
       { error: error.message },
       { status: 500 }
@@ -104,53 +132,86 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Get item data before delete (untuk return stock)
-    const { data: item } = await supabase
+    console.log('🗑️ Deleting item:', itemId, 'from penjualan:', penjualanId);
+
+    // ✅ Validasi: Cek apakah penjualan sudah dikonfirmasi
+    const { data: penjualan, error: penjualanError } = await supabase
+      .from('transaksi_penjualan')
+      .select('status, status_diterima')
+      .eq('id', penjualanId)
+      .single();
+
+    if (penjualanError) throw penjualanError;
+
+    // Tidak bisa hapus item jika sudah dikonfirmasi
+    if (penjualan.status_diterima === 'Diterima') {
+      return NextResponse.json({
+        error: 'Tidak bisa menghapus item pada penjualan yang sudah dikonfirmasi'
+      }, { status: 400 });
+    }
+
+    // Get item data before delete (untuk info saja)
+    const { data: item, error: getItemError } = await supabase
       .from('detail_penjualan')
-      .select('produk_id, jumlah')
+      .select(`
+        produk_id, 
+        jumlah
+      `)
       .eq('id', itemId)
       .single();
 
-    if (item) {
-      // Return stock ke produk
-      const { data: produk } = await supabase
-        .from('produk')
-        .select('stok')
-        .eq('id', item.produk_id)
-        .single();
+    if (getItemError) throw getItemError;
 
-      if (produk) {
-        const newStok = parseFloat(produk.stok) + parseFloat(item.jumlah);
-        await supabase
-          .from('produk')
-          .update({ stok: newStok })
-          .eq('id', item.produk_id);
-      }
-    }
+    // Get product name for logging
+    const { data: produkInfo } = await supabase
+      .from('produk')
+      .select('nama_produk')
+      .eq('id', item.produk_id)
+      .single();
 
-    // Delete detail
-    const { error } = await supabase
+    console.log(`  📦 Item: ${produkInfo?.nama_produk || 'Unknown'}, Qty: ${item.jumlah}`);
+
+    // ❌ TIDAK ADA PENGEMBALIAN STOCK DI SINI!
+    // Karena stock belum dikurangi saat item ditambahkan
+    console.log('  ℹ️ Stock NOT returned (was never reduced)');
+
+    // ✅ Delete detail penjualan
+    const { error: deleteError } = await supabase
       .from('detail_penjualan')
       .delete()
       .eq('id', itemId);
 
-    if (error) throw error;
+    if (deleteError) throw deleteError;
 
-    // Update total penjualan
+    console.log('  ✅ Item deleted');
+
+    // ✅ Update total penjualan
     const { data: allDetails } = await supabase
       .from('detail_penjualan')
       .select('subtotal')
       .eq('penjualan_id', penjualanId);
 
-    const total = allDetails?.reduce((sum, item) => sum + parseFloat(item.subtotal.toString()), 0) || 0;
+    const total = allDetails?.reduce(
+      (sum, item) => sum + parseFloat(item.subtotal?.toString() || '0'), 
+      0
+    ) || 0;
 
-    await supabase
+    const { error: updateTotalError } = await supabase
       .from('transaksi_penjualan')
       .update({ total })
       .eq('id', penjualanId);
 
-    return NextResponse.json({ message: 'Item berhasil dihapus' });
+    if (updateTotalError) throw updateTotalError;
+
+    console.log(`  💰 Total updated: ${total}`);
+
+    return NextResponse.json({ 
+      success: true,
+      message: 'Item berhasil dihapus',
+      new_total: total
+    });
   } catch (error: any) {
+    console.error('❌ Error deleting item:', error);
     return NextResponse.json(
       { error: error.message },
       { status: 500 }

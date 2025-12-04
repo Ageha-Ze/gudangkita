@@ -62,15 +62,7 @@ export default function MigrateFIFOPage() {
 
   return (
     <div className="flex h-screen bg-gray-50 text-gray-800">
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Navbar
-          sidebarOpen={sidebarOpen}
-          setSidebarOpen={setSidebarOpen}
-          title="Migrasi Data FIFO"
-        />
-
         <main className="flex-1 overflow-y-auto p-6">
           <div className="max-w-4xl mx-auto">
             {/* Header */}

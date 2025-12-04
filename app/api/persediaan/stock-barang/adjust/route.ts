@@ -1,10 +1,10 @@
 // app/api/persediaan/stock-barang/adjust/route.ts
-
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 
 /**
- * POST - Adjust stock (set new stock value)
+ * POST - Adjust stock to a specific value
+ * This will calculate the difference and create appropriate stock_barang record
  */
 export async function POST(request: NextRequest) {
   try {
@@ -14,12 +14,14 @@ export async function POST(request: NextRequest) {
     const {
       produk_id,
       cabang_id,
-      jumlah_baru,
+      jumlah_baru, // New stock value
       hpp,
       harga_jual,
       persentase_harga_jual,
       keterangan,
     } = body;
+
+    console.log('🔧 Adjusting stock:', { produk_id, cabang_id, jumlah_baru });
 
     // Validation
     if (!produk_id || !cabang_id || jumlah_baru === undefined) {
@@ -29,98 +31,98 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Calculate current stock from movements
-    const { data: movements, error: movementsError } = await supabase
-      .from('stock_barang')
-      .select('jumlah, tipe')
-      .eq('produk_id', produk_id)
-      .eq('cabang_id', cabang_id);
-
-    if (movementsError) throw movementsError;
-
-    let stockSekarang = 0;
-    movements?.forEach(m => {
-      const jumlah = parseFloat(m.jumlah.toString());
-      if (m.tipe === 'masuk') {
-        stockSekarang += jumlah;
-      } else if (m.tipe === 'keluar') {
-        stockSekarang -= jumlah;
-      }
-    });
-
-    const stockBaru = parseFloat(jumlah_baru);
-    const selisih = stockBaru - stockSekarang;
-
-    console.log(`📊 Stock sekarang: ${stockSekarang}, Stock baru: ${stockBaru}, Selisih: ${selisih}`);
-
-    // If there's a difference, create adjustment transaction
-    if (Math.abs(selisih) > 0.001) {
-      const { error: insertError } = await supabase
-        .from('stock_barang')
-        .insert({
-          produk_id,
-          cabang_id,
-          tanggal: new Date().toISOString().split('T')[0],
-          jumlah: Math.abs(selisih),
-          tipe: selisih > 0 ? 'masuk' : 'keluar',
-          keterangan: keterangan || `Penyesuaian stock: ${selisih > 0 ? '+' : ''}${selisih.toFixed(2)}`,
-          hpp: parseFloat(hpp) || 0,
-          harga_jual: parseFloat(harga_jual) || 0,
-          persentase: parseFloat(persentase_harga_jual) || 0,
-        });
-
-      if (insertError) throw insertError;
-    }
-
-    // Calculate total stock across all branches
-    const { data: allMovements, error: allError } = await supabase
-      .from('stock_barang')
-      .select('jumlah, tipe')
-      .eq('produk_id', produk_id);
-
-    if (allError) throw allError;
-
-    let totalStock = 0;
-    allMovements?.forEach(m => {
-      const jumlah = parseFloat(m.jumlah.toString());
-      if (m.tipe === 'masuk') {
-        totalStock += jumlah;
-      } else if (m.tipe === 'keluar') {
-        totalStock -= jumlah;
-      }
-    });
-
-    // Update produk.stok
-    const { error: updateError } = await supabase
+    // Get current stock
+    const { data: produk, error: produkError } = await supabase
       .from('produk')
-      .update({ stok: totalStock })
-      .eq('id', produk_id);
-
-    if (updateError) throw updateError;
-
-    // Get produk & cabang names
-    const { data: produk } = await supabase
-      .from('produk')
-      .select('nama_produk')
+      .select('stok, nama_produk, satuan, hpp')
       .eq('id', produk_id)
       .single();
 
-    const { data: cabang } = await supabase
-      .from('cabang')
-      .select('nama_cabang')
-      .eq('id', cabang_id)
+    if (produkError) throw produkError;
+    if (!produk) {
+      return NextResponse.json(
+        { success: false, error: 'Produk tidak ditemukan' },
+        { status: 404 }
+      );
+    }
+
+    const currentStock = parseFloat(produk.stok?.toString() || '0');
+    const newStock = parseFloat(jumlah_baru);
+    const selisih = newStock - currentStock;
+
+    console.log(`  📊 Stock adjustment: ${currentStock} → ${newStock} (selisih: ${selisih})`);
+
+    // If no difference, no need to adjust
+    if (Math.abs(selisih) < 0.001) {
+      return NextResponse.json({
+        success: true,
+        message: 'Stock sudah sesuai, tidak ada perubahan',
+        data: {
+          produk: produk.nama_produk,
+          stock_sebelum: currentStock,
+          stock_sesudah: currentStock,
+          selisih: 0,
+        },
+      });
+    }
+
+    // ✅ Step 1: Update produk.stok
+    const { error: updateError } = await supabase
+      .from('produk')
+      .update({ stok: newStock })
+      .eq('id', produk_id);
+
+    if (updateError) {
+      console.error('❌ Failed to update produk.stok:', updateError);
+      throw updateError;
+    }
+
+    console.log('✅ Stock updated in produk table');
+
+    // ✅ Step 2: Insert adjustment history
+    const tipe = selisih > 0 ? 'masuk' : 'keluar';
+    const jumlahAbs = Math.abs(selisih);
+
+    const { data: stockData, error: insertError } = await supabase
+      .from('stock_barang')
+      .insert({
+        produk_id,
+        cabang_id,
+        jumlah: jumlahAbs,
+        tanggal: new Date().toISOString().split('T')[0],
+        tipe,
+        keterangan: keterangan || `Penyesuaian stock manual (${selisih > 0 ? '+' : ''}${selisih.toFixed(2)})`,
+        hpp: hpp || produk.hpp || 0,
+        harga_jual: harga_jual || 0,
+        persentase: persentase_harga_jual || 0,
+      })
+      .select()
       .single();
+
+    if (insertError) {
+      console.error('⚠️ Warning: Failed to record history, rolling back stock...');
+      
+      // ✅ Rollback produk.stok if insert history fails
+      await supabase
+        .from('produk')
+        .update({ stok: currentStock })
+        .eq('id', produk_id);
+      
+      throw insertError;
+    }
+
+    console.log('✅ Adjustment history recorded successfully');
 
     return NextResponse.json({
       success: true,
-      message: 'Stock berhasil disesuaikan',
-      data: {
-        produk: produk?.nama_produk,
-        cabang: cabang?.nama_cabang,
-        stock_lama: stockSekarang,
-        stock_baru: stockBaru,
-        selisih: selisih,
-        total_stock_produk: totalStock,
+      message: `Stock berhasil disesuaikan!`,
+      data: stockData,
+      detail: {
+        produk: produk.nama_produk,
+        stock_sebelum: `${currentStock.toFixed(2)} ${produk.satuan || 'unit'}`,
+        stock_sesudah: `${newStock.toFixed(2)} ${produk.satuan || 'unit'}`,
+        selisih: `${selisih > 0 ? '+' : ''}${selisih.toFixed(2)} ${produk.satuan || 'unit'}`,
+        tipe: tipe,
       },
     });
   } catch (error: any) {

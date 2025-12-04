@@ -400,17 +400,17 @@ export default function StockBarangPage() {
   const negativeStockCount = filteredStocks.filter(item => item.stock < 0).length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 p-3 sm:p-4 md:p-6">
       <div className="max-w-7xl mx-auto">
         
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
-            <div className="p-3 bg-blue-500 rounded-xl">
-              <Package className="w-8 h-8 text-white" />
+        <div className="mb-4 sm:mb-6">
+          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800 flex items-center gap-2 sm:gap-3">
+            <div className="p-2 sm:p-3 bg-blue-500 rounded-lg sm:rounded-xl">
+              <Package className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 text-white" />
             </div>
             Stock Barang
           </h1>
-          <p className="text-gray-600 mt-2">Kelola persediaan barang gudang dengan mudah</p>
+          <p className="text-sm sm:text-base text-gray-600 mt-1 sm:mt-2">Kelola persediaan barang gudang dengan mudah</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -480,40 +480,54 @@ export default function StockBarangPage() {
                 />
               </div>
 
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => handleOpenManageStock(null, 'add')}
-                  className="px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2 font-medium"
-                >
-                  <Plus className="w-4 h-4" />
-                  Tambah Stock
-                </button>
-                <button 
-                  onClick={handleFixNegativeStock}
-                  className={`px-4 py-3 text-white rounded-lg transition-colors flex items-center gap-2 font-medium ${
-                    negativeStockCount > 0 
-                      ? 'bg-orange-500 hover:bg-orange-600 animate-pulse' 
-                      : 'bg-blue-500 hover:bg-blue-600'
-                  }`}
-                  title="Fix stock discrepancies from pembelian & produksi"
-                >
-                  🔧 Fix Stock {negativeStockCount > 0 ? `(${negativeStockCount})` : ''}
-                </button>
-                <button 
-                  onClick={handleResetRebuild}
-                  className="px-4 py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 transition-colors flex items-center gap-2 font-medium"
-                  title="Reset & rebuild all stock from scratch"
-                >
-                  🔄 Reset & Rebuild
-                </button>
-                <button 
-                  onClick={handleExport}
-                  className="px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors flex items-center gap-2"
-                >
-                  <Download className="w-4 h-4" />
-                  Export
-                </button>
-              </div>
+        {/* Mobile Responsive Button Layout */}
+<div className="flex gap-2 sm:gap-3 justify-end sm:justify-start">
+  <button 
+    onClick={() => handleOpenManageStock(null, 'add')}
+    className="sm:flex-none px-3 py-2.5 sm:px-4 sm:py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 active:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
+  >
+    <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+    <span className="hidden sm:inline whitespace-nowrap">Tambah Stock</span>
+  </button>
+  
+  <button 
+    onClick={handleFixNegativeStock}
+    className={`sm:flex-none px-3 py-2.5 sm:px-4 sm:py-3 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium text-sm relative ${
+      negativeStockCount > 0 
+        ? 'bg-orange-500 hover:bg-orange-600 active:bg-orange-700 animate-pulse' 
+        : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
+    }`}
+    title="Fix stock discrepancies from pembelian & produksi"
+  >
+    <span className="text-lg">🔧</span>
+    {negativeStockCount > 0 && (
+      <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center sm:hidden">
+        {negativeStockCount}
+      </span>
+    )}
+    <span className="hidden sm:inline whitespace-nowrap">
+      Fix Stock {negativeStockCount > 0 ? `(${negativeStockCount})` : ''}
+    </span>
+  </button>
+  
+  <button 
+    onClick={handleResetRebuild}
+    className="sm:flex-none px-3 py-2.5 sm:px-4 sm:py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 active:bg-purple-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
+    title="Reset & rebuild all stock from scratch"
+  >
+    <span className="text-lg">🔄</span>
+    <span className="hidden sm:inline whitespace-nowrap">Reset & Rebuild</span>
+  </button>
+  
+  <button 
+    onClick={handleExport}
+    className="sm:flex-none px-3 py-2.5 sm:px-4 sm:py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 active:bg-green-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
+  >
+    <Download className="w-4 h-4 sm:w-5 sm:h-5" />
+    <span className="hidden sm:inline whitespace-nowrap">Export</span>
+  </button>
+</div>
+
             </div>
           </div>
 

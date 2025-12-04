@@ -57,7 +57,7 @@ export async function PUT(
     const { id } = await context.params;
     const body = await request.json();
 
-    console.log('Updating stock opname:', id, body);
+    console.log('🔵 Updating stock opname:', id, body);
 
     // Get opname data
     const { data: opname, error: getError } = await supabase
@@ -82,28 +82,49 @@ export async function PUT(
       );
     }
 
-    // Update status
+    // ✅ Update status FIRST (prevent double processing)
     const { error: updateError } = await supabase
       .from('stock_opname')
       .update({
         status: body.status,
         keterangan: body.keterangan || opname.keterangan,
       })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('status', 'pending'); // ← Only update if still pending
 
     if (updateError) throw updateError;
 
     // If approved, adjust the stock
     if (body.status === 'approved' && Math.abs(opname.selisih) > 0.001) {
-      console.log('🔄 Adjusting stock via OPNAME...');
+      console.log('📄 Adjusting stock via OPNAME...');
       console.log('   Produk ID:', opname.produk_id);
       console.log('   Cabang ID:', opname.cabang_id);
       console.log('   Stock Sistem:', opname.jumlah_sistem);
       console.log('   Stock Fisik:', opname.jumlah_fisik);
       console.log('   Selisih:', opname.selisih);
 
-      // ✅ FIXED: Jangan delete history, hanya insert adjustment
-      // Insert adjustment transaction
+      // ✅ CHECK: Apakah adjustment ini sudah dicatat sebelumnya?
+      const { data: existingAdjustment } = await supabase
+        .from('stock_barang')
+        .select('id')
+        .eq('produk_id', opname.produk_id)
+        .eq('cabang_id', opname.cabang_id)
+        .ilike('keterangan', `%Stock Opname Adjustment - ${id}%`)
+        .limit(1);
+
+      if (existingAdjustment && existingAdjustment.length > 0) {
+        console.warn('⚠️ Adjustment already recorded, skipping insert');
+        
+        return NextResponse.json({
+          success: true,
+          message: body.status === 'approved' 
+            ? 'Stock opname sudah disetujui sebelumnya' 
+            : 'Stock opname ditolak',
+          already_processed: true
+        });
+      }
+
+      // ✅ Insert adjustment transaction (ONCE!)
       const { error: stockError } = await supabase
         .from('stock_barang')
         .insert({
@@ -112,7 +133,7 @@ export async function PUT(
           jumlah: Math.abs(opname.selisih),
           tanggal: opname.tanggal,
           tipe: opname.selisih > 0 ? 'masuk' : 'keluar',
-          keterangan: `Stock Opname Adjustment - ${id} (${body.keterangan || 'Stock fisik berbeda dari sistem'})`,
+          keterangan: `Stock Opname Adjustment - ${id} (Approved)`,
           hpp: 0,
           harga_jual: 0,
           persentase: 0,
@@ -128,28 +149,24 @@ export async function PUT(
         tipe: opname.selisih > 0 ? 'masuk' : 'keluar',
       });
 
-      // ✅ Recalculate total stock (all branches)
-      const { data: allTransactions } = await supabase
-        .from('stock_barang')
-        .select('jumlah, tipe')
-        .eq('produk_id', opname.produk_id);
+      // ✅ FIXED: Update produk.stok langsung dengan selisih (jangan recalculate!)
+      const { data: currentProduk, error: getProdukError } = await supabase
+        .from('produk')
+        .select('stok, nama_produk')
+        .eq('id', opname.produk_id)
+        .single();
 
-      let totalStock = 0;
-      allTransactions?.forEach(t => {
-        const jumlah = parseFloat(t.jumlah.toString());
-        if (t.tipe === 'masuk') {
-          totalStock += jumlah;
-        } else if (t.tipe === 'keluar') {
-          totalStock -= jumlah;
-        }
-      });
+      if (getProdukError) throw getProdukError;
 
-      console.log('✅ Total stock calculated (all branches):', totalStock);
+      const currentStock = parseFloat(currentProduk.stok?.toString() || '0');
+      const newStock = currentStock + parseFloat(opname.selisih.toString());
+
+      console.log(`📊 Stock update: ${currentStock} + (${opname.selisih}) = ${newStock}`);
 
       // Update produk table
       const { error: produkError } = await supabase
         .from('produk')
-        .update({ stok: totalStock })
+        .update({ stok: newStock })
         .eq('id', opname.produk_id);
 
       if (produkError) {
@@ -157,7 +174,7 @@ export async function PUT(
         throw produkError;
       }
 
-      console.log('✅ Produk stock updated to:', totalStock);
+      console.log('✅ Produk stock updated to:', newStock);
     }
 
     return NextResponse.json({

@@ -108,24 +108,40 @@ export async function GET(
   }
 }
 
-// DELETE - Hapus penjualan DAN kembalikan stock
+// ✅ FIXED: DELETE - Hapus penjualan DAN kembalikan stock
 export async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await supabaseServer();
-    const { id } = await context.params;
+    const { id } = await context.params; // ✅ FIX: Use context.params, not searchParams
 
-    console.log('DELETE PENJUALAN ID:', id);
+    if (!id) {
+      return NextResponse.json(
+        { error: 'ID penjualan tidak valid' },
+        { status: 400 }
+      );
+    }
 
-    // 1. Get penjualan data dengan detail_penjualan
+    console.log('🗑️ DELETE PENJUALAN ID:', id);
+
+    // ✅ Step 1: Get penjualan data lengkap
     const { data: penjualan, error: fetchError } = await supabase
       .from('transaksi_penjualan')
       .select(`
         id,
+        nota_penjualan,
+        tanggal,
+        total,
+        dibayar,
         status,
         status_pembayaran,
+        status_diterima,
+        jenis_pembayaran,
+        kas_id,
+        cabang_id,
+        customer_id,
         detail_penjualan (
           id,
           produk_id,
@@ -138,158 +154,213 @@ export async function DELETE(
       .single();
 
     if (fetchError) {
-      console.error('Error fetch penjualan:', fetchError);
+      console.error('❌ Error fetch penjualan:', fetchError);
       return NextResponse.json(
         { error: 'Data penjualan tidak ditemukan' },
         { status: 404 }
       );
     }
 
-    console.log('Penjualan ID:', id);
-    console.log('Detail items:', penjualan.detail_penjualan?.length || 0);
+    console.log('📦 Penjualan:', penjualan.nota_penjualan);
+    console.log('📊 Status:', penjualan.status);
+    console.log('📊 Status Diterima:', penjualan.status_diterima);
+    console.log('💰 Jenis Pembayaran:', penjualan.jenis_pembayaran);
+    console.log('💵 Total:', penjualan.total);
+    console.log('💵 Dibayar:', penjualan.dibayar);
 
-    // 2. Cek apakah sudah ada cicilan/pembayaran
-    const { data: cicilans } = await supabase
+    // ✅ Step 2: Validasi - Cek apakah sudah ada cicilan/pembayaran
+    const { data: cicilan } = await supabase
       .from('cicilan_penjualan')
-      .select('id, jumlah_cicilan, kas_id')
+      .select('id')
       .eq('penjualan_id', id);
 
-    if (cicilans && cicilans.length > 0) {
+    if (cicilan && cicilan.length > 0) {
       return NextResponse.json(
         { error: 'Tidak bisa hapus penjualan yang sudah ada pembayaran/cicilan' },
         { status: 400 }
       );
     }
 
-    // 3. KEMBALIKAN STOCK untuk setiap produk
-    if (penjualan.detail_penjualan && penjualan.detail_penjualan.length > 0) {
-      for (const detail of penjualan.detail_penjualan) {
-        console.log('Kembalikan stock produk ID', detail.produk_id, ':', detail.jumlah);
+    // ✅ Step 3: KEMBALIKAN STOCK - HANYA JIKA SUDAH DITERIMA
+    if (penjualan.status_diterima === 'Diterima') {
+      console.log('✅ Status sudah diterima, akan kembalikan stock...');
+      
+      if (penjualan.detail_penjualan && penjualan.detail_penjualan.length > 0) {
+        for (const detail of penjualan.detail_penjualan) {
+          console.log(`  📦 Kembalikan stock produk ID ${detail.produk_id}: +${detail.jumlah}`);
 
-        const { data: produk, error: produkError } = await supabase
-          .from('produk')
-          .select('stok, nama_produk')
-          .eq('id', detail.produk_id)
-          .single();
-
-        if (produkError) {
-          console.error('Error get produk', detail.produk_id, ':', produkError);
-          continue;
-        }
-
-        const stokLama = parseFloat(produk.stok?.toString() || '0');
-        const stokBaru = stokLama + parseFloat(detail.jumlah?.toString() || '0');
-
-        console.log('  ', produk.nama_produk, ':', stokLama, '->', stokBaru);
-
-        const { error: updateStockError } = await supabase
-          .from('produk')
-          .update({ stok: stokBaru })
-          .eq('id', detail.produk_id);
-
-        if (updateStockError) {
-          console.error('Error update stock produk', detail.produk_id, ':', updateStockError);
-        } else {
-          console.log('   Stock updated successfully');
-        }
-
-        await supabase
-          .from('history_stok')
-          .insert({
-            produk_id: detail.produk_id,
-            tanggal: new Date().toISOString(),
-            jumlah: parseFloat(detail.jumlah?.toString() || '0'),
-            tipe: 'masuk',
-            keterangan: 'Pengembalian stock dari penghapusan penjualan ID: ' + id
-          });
-      }
-    }
-
-    // 4. Kembalikan kas untuk setiap cicilan
-    if (cicilans && cicilans.length > 0) {
-      for (const cicilan of cicilans) {
-        if (cicilan.kas_id) {
-          const { data: kas } = await supabase
-            .from('kas')
-            .select('*')
-            .eq('id', cicilan.kas_id)
+          // Get current stock
+          const { data: produk, error: produkError } = await supabase
+            .from('produk')
+            .select('stok, nama_produk, satuan')
+            .eq('id', detail.produk_id)
             .single();
 
-          if (kas) {
-            const kasSaldo = parseFloat(kas.saldo.toString());
-            const jumlahCicilan = parseFloat(cicilan.jumlah_cicilan.toString());
-            const newSaldo = kasSaldo - jumlahCicilan;
-
-            await supabase
-              .from('kas')
-              .update({ saldo: newSaldo })
-              .eq('id', kas.id);
-
-            console.log('Kas', kas.nama_kas, 'dikurangi:', kasSaldo, '-', jumlahCicilan, '=', newSaldo);
-
-            await supabase
-              .from('transaksi_kas')
-              .insert({
-                kas_id: kas.id,
-                tanggal_transaksi: new Date().toISOString().split('T')[0],
-                debit: jumlahCicilan,
-                kredit: 0,
-                keterangan: 'Pembatalan penjualan/cicilan (ID: ' + id + ')'
-              });
+          if (produkError) {
+            console.error(`  ❌ Error get produk ${detail.produk_id}:`, produkError);
+            continue;
           }
+
+          const stokLama = parseFloat(produk.stok?.toString() || '0');
+          const jumlahKembali = parseFloat(detail.jumlah?.toString() || '0');
+          const stokBaru = stokLama + jumlahKembali;
+
+          console.log(`    ${produk.nama_produk}: ${stokLama} + ${jumlahKembali} = ${stokBaru}`);
+
+          // Update stock produk
+          const { error: updateStockError } = await supabase
+            .from('produk')
+            .update({ 
+              stok: stokBaru,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', detail.produk_id);
+
+          if (updateStockError) {
+            console.error(`  ❌ Error update stock:`, updateStockError);
+            throw new Error(`Gagal mengembalikan stock ${produk.nama_produk}`);
+          }
+
+          // ✅ Insert stock_barang history untuk pengembalian (bukan delete!)
+          await supabase
+            .from('stock_barang')
+            .insert({
+              produk_id: detail.produk_id,
+              cabang_id: penjualan.cabang_id,
+              jumlah: jumlahKembali,
+              tanggal: new Date().toISOString().split('T')[0],
+              tipe: 'masuk',
+              keterangan: `Pembatalan Penjualan - ${penjualan.nota_penjualan}`,
+              hpp: 0,
+              harga_jual: 0,
+              persentase: 0,
+            });
+
+          console.log(`  ✅ Stock ${produk.nama_produk} dikembalikan`);
+        }
+      }
+    } else {
+      console.log('⏭️ Status belum diterima, skip pengembalian stock');
+    }
+
+    // ✅ Step 4: KEMBALIKAN UANG KE KAS - JIKA TUNAI DAN SUDAH DIBAYAR
+    if (penjualan.jenis_pembayaran === 'tunai' && penjualan.status === 'billed') {
+      const kasId = penjualan.kas_id;
+      const jumlahDibayar = parseFloat(penjualan.dibayar?.toString() || '0');
+
+      if (kasId && jumlahDibayar > 0) {
+        console.log('💰 Kembalikan uang ke kas...');
+
+        // Get current saldo kas
+        const { data: kas, error: kasError } = await supabase
+          .from('kas')
+          .select('saldo, nama_kas')
+          .eq('id', kasId)
+          .single();
+
+        if (kasError) {
+          console.error('❌ Error get kas:', kasError);
+        } else {
+          const saldoLama = parseFloat(kas.saldo?.toString() || '0');
+          const saldoBaru = saldoLama - jumlahDibayar;
+
+          console.log(`  ${kas.nama_kas}: ${saldoLama} - ${jumlahDibayar} = ${saldoBaru}`);
+
+          // Update saldo kas
+          const { error: updateKasError } = await supabase
+            .from('kas')
+            .update({ saldo: saldoBaru })
+            .eq('id', kasId);
+
+          if (updateKasError) {
+            console.error('❌ Error update kas:', updateKasError);
+            throw new Error('Gagal mengembalikan uang ke kas');
+          }
+
+          // ✅ Insert transaksi_kas untuk pembatalan (bukan delete!)
+          await supabase
+            .from('transaksi_kas')
+            .insert({
+              kas_id: kasId,
+              tanggal_transaksi: new Date().toISOString().split('T')[0],
+              debit: jumlahDibayar,
+              kredit: 0,
+              keterangan: `Pembatalan Penjualan Tunai - ${penjualan.nota_penjualan}`,
+            });
+
+          console.log('  ✅ Uang dikembalikan ke kas');
         }
       }
     }
 
-    // 5. Hapus cicilan
-    await supabase
-      .from('cicilan_penjualan')
-      .delete()
-      .eq('penjualan_id', id);
+    // ✅ Step 5: HAPUS PIUTANG - JIKA HUTANG
+    if (penjualan.jenis_pembayaran === 'hutang') {
+      console.log('💳 Hapus piutang...');
 
-    // 6. Hapus detail_penjualan
-    const { error: detailError } = await supabase
+      const { error: deletePiutangError } = await supabase
+        .from('piutang_penjualan')
+        .delete()
+        .eq('penjualan_id', parseInt(id));
+
+      if (deletePiutangError) {
+        console.error('⚠️ Warning: Failed to delete piutang:', deletePiutangError);
+      } else {
+        console.log('  ✅ Piutang dihapus');
+      }
+    }
+
+    // ✅ Step 6: Delete detail_penjualan
+    const { error: deleteDetailError } = await supabase
       .from('detail_penjualan')
       .delete()
       .eq('penjualan_id', id);
 
-    if (detailError) {
-      console.error('Error delete detail:', detailError);
-      throw detailError;
+    if (deleteDetailError) {
+      console.error('❌ Error delete detail:', deleteDetailError);
+      throw new Error('Gagal menghapus detail penjualan');
     }
 
-    console.log('Detail penjualan deleted');
+    console.log('✅ Detail penjualan deleted');
 
-    // 7. Hapus piutang jika ada
-    await supabase
-      .from('piutang_penjualan')
-      .delete()
-      .eq('penjualan_id', id);
-
-    console.log('Piutang deleted (if any)');
-
-    // 8. Hapus transaksi penjualan
+    // ✅ Step 7: Delete transaksi_penjualan
     const { error: deletePenjualanError } = await supabase
       .from('transaksi_penjualan')
       .delete()
       .eq('id', id);
 
     if (deletePenjualanError) {
-      console.error('Error delete penjualan:', deletePenjualanError);
+      console.error('❌ Error delete penjualan:', deletePenjualanError);
       throw deletePenjualanError;
     }
 
-    console.log('Penjualan deleted');
-    console.log('DELETE SUKSES! Stock sudah dikembalikan.');
+    console.log('✅ Penjualan deleted');
 
-    return NextResponse.json({ 
+    // Build success message
+    let message = 'Penjualan berhasil dibatalkan';
+    if (penjualan.status_diterima === 'Diterima') {
+      message += ' dan stock dikembalikan';
+    }
+    if (penjualan.jenis_pembayaran === 'tunai' && parseFloat(penjualan.dibayar?.toString() || '0') > 0) {
+      message += ', uang dikembalikan ke kas';
+    }
+    if (penjualan.jenis_pembayaran === 'hutang') {
+      message += ', piutang dihapus';
+    }
+
+    console.log('✅ DELETE SUKSES!');
+
+    return NextResponse.json({
       success: true,
-      message: 'Penjualan berhasil dihapus dan stock dikembalikan',
-      stock_returned: penjualan.detail_penjualan?.length || 0,
-      cicilans_deleted: cicilans?.length || 0
+      message: message,
+      rollback_info: {
+        stock_returned: penjualan.status_diterima === 'Diterima',
+        cash_returned: penjualan.jenis_pembayaran === 'tunai' && parseFloat(penjualan.dibayar?.toString() || '0') > 0,
+        piutang_deleted: penjualan.jenis_pembayaran === 'hutang'
+      }
     });
+
   } catch (error: any) {
-    console.error('ERROR DELETE PENJUALAN:', error);
+    console.error('❌ ERROR DELETE PENJUALAN:', error);
     return NextResponse.json(
       { error: error.message || 'Gagal menghapus penjualan' },
       { status: 500 }

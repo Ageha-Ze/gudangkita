@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { FileText, Printer, Trash2, Eye } from 'lucide-react';
+import { Plus, FileText, Printer, Trash2, Eye } from 'lucide-react';
 import ModalTambahPembelian from './ModalTambahPembelian';
+import ModalPrintNotaPembelian from './ModalPrintNotaPembelian';
+
 
 interface DetailPembelian {
   id: number;
@@ -38,7 +40,9 @@ export default function PembelianPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [showModal, setShowModal] = useState(false);
+  const [showModal, setShowModal, ] = useState(false);
+  const [showModalPrint, setShowModalPrint] = useState(false);
+  const [selectedPembelianId, setSelectedPembelianId] = useState<number>(0);
 
   useEffect(() => {
     fetchPembelians();
@@ -90,6 +94,11 @@ export default function PembelianPage() {
     }
   };
 
+  const handlePrint = (id: number) => {
+  setSelectedPembelianId(id);
+  setShowModalPrint(true);
+};
+
   const handleSuccess = async (pembelianId: number) => {
     await new Promise(resolve => setTimeout(resolve, 300));
     router.push(`/transaksi/pembelian/${pembelianId}`);
@@ -132,8 +141,9 @@ export default function PembelianPage() {
         </div>
         <button
           onClick={() => setShowModal(true)}
-          className="w-full sm:w-auto px-4 sm:px-6 py-2 text-sm bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition"
+          className="w-full sm:w-auto px-4 sm:px-6 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2"
         >
+          <Plus size={18} />
           Tambah
         </button>
       </div>
@@ -211,11 +221,11 @@ export default function PembelianPage() {
                   Detail
                 </button>
                 <button
-                  onClick={() => window.print()}
-                  className="flex items-center justify-center gap-2 px-3 py-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition text-sm"
-                >
-                  <Printer size={16} />
-                </button>
+  onClick={() => handlePrint(item.id)}
+  className="flex items-center justify-center gap-2 px-3 py-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition text-sm"
+>
+  <Printer size={16} />
+</button>
                 <button
                   onClick={() => handleDelete(item.id)}
                   className="flex items-center justify-center gap-2 px-3 py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition text-sm"
@@ -303,12 +313,12 @@ export default function PembelianPage() {
                         <Eye size={18} />
                       </button>
                       <button
-                        onClick={() => window.print()}
-                        className="text-blue-600 hover:text-blue-800 transition"
-                        title="Print"
-                      >
-                        <Printer size={18} />
-                      </button>
+  onClick={() => handlePrint(item.id)}
+  className="text-blue-600 hover:text-blue-800 transition"
+  title="Print"
+>
+  <Printer size={18} />
+</button>
                       <button
                         onClick={() => handleDelete(item.id)}
                         className="text-red-600 hover:text-red-800 transition"
@@ -378,6 +388,11 @@ export default function PembelianPage() {
         onClose={() => setShowModal(false)}
         onSuccess={handleSuccess}
       />
+      <ModalPrintNotaPembelian
+  isOpen={showModalPrint}
+  onClose={() => setShowModalPrint(false)}
+  pembelianId={selectedPembelianId}
+/>
     </div>
   );
 }

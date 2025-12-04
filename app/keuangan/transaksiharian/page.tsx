@@ -320,65 +320,65 @@ export default function TransaksiKasHarian() {
         <div className="bg-white rounded-xl shadow-md p-4 mb-6">
           <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
             <div className="flex gap-3 w-full md:w-auto">
-              <div className="relative flex-1 md:w-48">
-                <select
-                  value={selectedKas}
-                  onChange={(e) => setSelectedKas(Number(e.target.value))}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent appearance-none bg-white"
-                >
-                  {kasList.map(kas => (
-                    <option key={kas.id} value={kas.id}>
-                      {kas.nama_kas} - {formatCurrency(kas.saldo)}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <div className="relative w-full sm:flex-1 sm:max-w-[200px]">
+  <select
+    value={selectedKas}
+    onChange={(e) => setSelectedKas(Number(e.target.value))}
+    className="w-full px-3 py-2 sm:px-4 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent appearance-none bg-white"
+  >
+    {kasList.map(kas => (
+      <option key={kas.id} value={kas.id}>
+        {kas.nama_kas} - {formatCurrency(kas.saldo)}
+      </option>
+    ))}
+  </select>
+</div>
 
-              <div className="relative flex-1 md:w-48">
-                <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-              </div>
+<div className="relative w-full sm:flex-1 sm:max-w-[180px]">
+  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
+  <input
+    type="date"
+    value={selectedDate}
+    onChange={(e) => setSelectedDate(e.target.value)}
+    className="w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+  />
+</div>
 
-              <div className="relative flex-1 md:w-64">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  type="text"
-                  placeholder="Cari transaksi..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-              </div>
+<div className="relative w-full sm:flex-1 sm:max-w-[250px]">
+  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
+  <input
+    type="text"
+    placeholder="Cari transaksi..."
+    value={searchTerm}
+    onChange={(e) => setSearchTerm(e.target.value)}
+    className="w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+  />
+</div>
             </div>
 
-            <div className="flex gap-2 w-full md:w-auto">
-              <button
-                onClick={exportToExcel}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-              >
-                <Download className="w-5 h-5" />
-                Export
-              </button>
-              <button
-                onClick={() => setShowTransferModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all shadow-md"
-              >
-                <ArrowDownCircle className="w-5 h-5 rotate-45" />
-                Transfer
-              </button>
-              <button
-                onClick={() => setShowModal(true)}
-                className="flex items-center gap-2 px-6 py-2 bg-gradient-to-r from-indigo-600 to-cyan-600 text-white rounded-lg hover:from-indigo-700 hover:to-cyan-700 transition-all shadow-md"
-              >
-                <Plus className="w-5 h-5" />
-                Tambah Transaksi
-              </button>
-            </div>
+            <div className="flex gap-2 w-full sm:w-auto justify-end sm:justify-start">
+  <button
+    onClick={exportToExcel}
+    className="sm:flex-none px-3 py-2 sm:px-4 sm:py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 active:bg-gray-300 transition-colors flex items-center justify-center gap-2"
+  >
+    <Download className="w-4 h-4 sm:w-5 sm:h-5" />
+    <span className="hidden sm:inline">Export</span>
+  </button>
+  <button
+    onClick={() => setShowTransferModal(true)}
+    className="sm:flex-none px-3 py-2 sm:px-4 sm:py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 active:from-purple-800 active:to-pink-800 transition-all shadow-md flex items-center justify-center gap-2"
+  >
+    <ArrowDownCircle className="w-4 h-4 sm:w-5 sm:h-5 rotate-45" />
+    <span className="hidden sm:inline">Transfer</span>
+  </button>
+  <button
+    onClick={() => setShowModal(true)}
+    className="sm:flex-none px-3 py-2 sm:px-4 sm:py-2 bg-gradient-to-r from-indigo-600 to-cyan-600 text-white rounded-lg hover:from-indigo-700 hover:to-cyan-700 active:from-indigo-800 active:to-cyan-800 transition-all shadow-md flex items-center justify-center gap-2"
+  >
+    <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+    <span className="hidden sm:inline">Tambah Transaksi</span>
+  </button>
+</div>
           </div>
         </div>
 
