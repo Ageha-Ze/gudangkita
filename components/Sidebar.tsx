@@ -119,6 +119,7 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [user, setUser] = useState({ name: 'Admin User', email: 'admin@gudangkita.com' });
+  const [username, setUsername] = useState('User');
   const [marqueeText, setMarqueeText] = useState('');
 
   // Fetch notification counts for badges
@@ -165,36 +166,52 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
     }
   };
 
+  // Fetch current user data
+  const fetchCurrentUser = async () => {
+    try {
+      const response = await fetch('/api/auth/user');
+      const result = await response.json();
+      if (result.success && result.user) {
+        setUsername(result.user.username);
+      }
+    } catch (error) {
+      console.error('Error fetching current user:', error);
+    }
+  };
+
   // Update marquee text
   useEffect(() => {
+    // Fetch user data on component mount
+    fetchCurrentUser();
+
     const updateMarquee = () => {
       const now = new Date();
-      
+
       const hour = now.getHours();
       let greeting = '';
       if (hour >= 5 && hour < 12) greeting = 'pagi';
       else if (hour >= 12 && hour < 15) greeting = 'siang';
       else if (hour >= 15 && hour < 18) greeting = 'sore';
       else greeting = 'malam';
-      
+
       const day = String(now.getDate()).padStart(2, '0');
       const month = String(now.getMonth() + 1).padStart(2, '0');
       const year = now.getFullYear();
       const date = `${day}/${month}/${year}`;
-      
+
       const hours = String(now.getHours()).padStart(2, '0');
       const minutes = String(now.getMinutes()).padStart(2, '0');
       const time = `${hours}:${minutes}`;
-      
+
       setMarqueeText(
-        `Selamat ${greeting}, ${date} ${time} WIB`
+        `selamat ${greeting} ${username}, now is ${date} ${time} WIB`
       );
     };
-    
+
     updateMarquee();
     const interval = setInterval(updateMarquee, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [username]);
 
   // Auto-open menu if current page is in submenu
   useEffect(() => {
