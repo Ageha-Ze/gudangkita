@@ -12,8 +12,6 @@ import {
 } from 'lucide-react';
 import { logoutUser, getUserSession } from '@/app/login/actions';
 
-
-
 interface MenuItem {
   id: string;
   name: string;
@@ -284,9 +282,9 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
     <>
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 h-full bg-white shadow-xl border-r border-gray-200 z-50 transition-all duration-300 ease-in-out ${
+        className={`fixed top-0 left-0 h-screen bg-white shadow-xl border-r border-gray-200 z-50 transition-all duration-300 ease-in-out ${
           isExpanded ? 'w-80' : 'w-20'
-        }`}
+        } flex flex-col`}
       >
         {/* Header */}
         <div className="px-6 py-6 border-b border-gray-100">
@@ -332,7 +330,7 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4">
+        <nav className="flex-1 min-h-0 overflow-y-auto py-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent hover:scrollbar-thumb-gray-400 transition-colors">
           <div className="px-4 mb-4">
             {isExpanded && (
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
