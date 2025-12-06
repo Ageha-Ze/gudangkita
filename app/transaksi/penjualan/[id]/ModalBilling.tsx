@@ -79,7 +79,10 @@ export default function ModalBilling({
   const fetchKas = async () => {
     try {
       setLoadingKas(true);
-      const res = await fetch('/api/master/kas');
+      // Get kas accounts filtered by the current penjualan branch
+      const cabangId = (penjualan as any).cabang_id;
+      const url = cabangId ? `/api/master/kas?cabang_id=${cabangId}` : '/api/master/kas';
+      const res = await fetch(url);
       const json = await res.json();
       setKasList(json.data || []);
     } catch (error) {

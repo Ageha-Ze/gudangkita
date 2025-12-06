@@ -2,6 +2,94 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseServer } from '@/lib/supabaseServer';
 
+export async function PUT(request: NextRequest) {
+  try {
+    const supabase = await supabaseServer();
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json(
+        { error: 'ID konsinyasi tidak valid' },
+        { status: 400 }
+      );
+    }
+
+    const body = await request.json();
+    const { status } = body;
+
+    if (!status) {
+      return NextResponse.json(
+        { error: 'Status wajib diisi' },
+        { status: 400 }
+      );
+    }
+
+    console.log('✅ Completing konsinyasi:', id, 'to status:', status);
+
+    try {
+      // First check if konsinyasi exists
+      console.log('🔍 Checking if konsinyasi exists...');
+      const { data: existing, error: checkError } = await supabase
+        .from('transaksi_konsinyasi')
+        .select('id, kode_konsinyasi, status')
+        .eq('id', id)
+        .single();
+
+      console.log('Check result:', { existing, checkError });
+
+      if (checkError || !existing) {
+        console.error('❌ Konsinyasi not found:', checkError);
+        return NextResponse.json(
+          { error: `Konsinyasi tidak ditemukan: ${checkError?.message || 'Unknown error'}` },
+          { status: 404 }
+        );
+      }
+
+      console.log('✅ Current konsinyasi:', existing.kode_konsinyasi, 'status:', existing.status);
+
+      // ✅ Update konsinyasi status to provided status
+      console.log('🔄 Updating konsinyasi status...');
+      const { data: updated, error: updateError } = await supabase
+        .from('transaksi_konsinyasi')
+        .update({
+          status: status
+        })
+        .eq('id', id)
+        .select('id, kode_konsinyasi, status')
+        .single();
+
+      console.log('Update result:', { updated, updateError });
+
+      if (updateError) {
+        console.error('❌ Error updating konsinyasi:', updateError);
+        return NextResponse.json({
+          error: `Gagal memperbarui konsinyasi: ${updateError.message}`
+        }, { status: 500 });
+      }
+
+      console.log('✅ Konsinyasi status updated:', updated.kode_konsinyasi, 'from', existing.status, 'to', updated.status);
+
+      return NextResponse.json({
+        success: true,
+        message: `Konsinyasi berhasil ${status}`,
+        data: { id: updated.id, kode_konsinyasi: updated.kode_konsinyasi, status: updated.status }
+      });
+    } catch (unexpectedError: any) {
+      console.error('💥 Unexpected error during PUT operation:', unexpectedError);
+      return NextResponse.json({
+        error: `Unexpected error: ${unexpectedError.message}`
+      }, { status: 500 });
+    }
+
+  } catch (error: any) {
+    console.error('❌ Unexpected error updating konsinyasi:', error);
+    return NextResponse.json({
+      error: error.message || 'Gagal memperbarui konsinyasi'
+    }, { status: 500 });
+  }
+}
+
 // GET - List transaksi konsinyasi
 export async function GET(request: NextRequest) {
   try {
@@ -290,33 +378,53 @@ export async function DELETE(request: NextRequest) {
     console.log('📦 Konsinyasi:', konsinyasi.kode_konsinyasi);
     console.log('📊 Status:', konsinyasi.status);
 
-    // ✅ 2. Validasi: Tidak bisa hapus jika status final
-    if (konsinyasi.status === 'selesai') {
-      return NextResponse.json(
-        { error: 'Tidak dapat menghapus konsinyasi yang sudah selesai' },
-        { status: 400 }
-      );
+    // ✅ 2. Validasi STOCK SAFETY berdasarkan status
+
+    if (konsinyasi.status === 'Aktif') {
+      // 🔍 Untuk konsinyasi AKTIF: Cek apakah ada penjualan yang sudah mengurangi stock
+      const { data: penjualan } = await supabase
+        .from('penjualan_konsinyasi')
+        .select('id, jumlah_terjual, total_nilai_kita, kas_id')
+        .in('detail_konsinyasi_id', konsinyasi.detail_konsinyasi.map((d: any) => d.id));
+
+      if (penjualan && penjualan.length > 0) {
+        const totalTerjual = penjualan.reduce((sum, p) =>
+          sum + parseFloat(p.jumlah_terjual?.toString() || '0'), 0
+        );
+
+        return NextResponse.json({
+          error: `Cannot delete Active konsinyasi with sales (${totalTerjual} pcs sold). Complete the konsinyasi first or reverse sales manually.`
+        }, { status: 400 });
+      }
+
+      console.log('✅ No sales found for Active konsinyasi, safe to delete');
+
+    } else if (konsinyasi.status === 'Selesai') {
+      // 🔍 Untuk konsinyasi SELESAI: Delete aman, tapi perlu restore stock yang terpakai sales
+      console.log('✅ Selesai konsinyasi: Completed konsinyasi can be deleted (sold stock will be restored)');
+
+    } else {
+      // ❓ Status lain (dibatalkan, dll)
+      console.log(`ℹ️ Status ${konsinyasi.status} konsinyasi: Proceeding with delete and stock restoration`);
     }
 
-    // ✅ 3. Validasi: Cek apakah ada penjualan
-    const { data: penjualan } = await supabase
+    // ✅ STOCK RESTORATION RUNS FOR ALL STATUSES
+    // Jika ada penjualan konsinyasi yang sudah mengurangi stock, restore kembali
+
+    // ✅ 4. Hapus penjualan konsinyasi terkait
+    const { error: deletePenjualanError } = await supabase
       .from('penjualan_konsinyasi')
-      .select('id, jumlah_terjual, total_nilai_kita, kas_id')
+      .delete()
       .in('detail_konsinyasi_id', konsinyasi.detail_konsinyasi.map((d: any) => d.id));
 
-    if (penjualan && penjualan.length > 0) {
-      const totalTerjual = penjualan.reduce((sum, p) => 
-        sum + parseFloat(p.jumlah_terjual?.toString() || '0'), 0
-      );
-      
-      return NextResponse.json({
-        error: `Tidak dapat menghapus konsinyasi yang sudah ada penjualan (${totalTerjual} pcs terjual). Selesaikan konsinyasi terlebih dahulu.`
-      }, { status: 400 });
+    if (deletePenjualanError) {
+      console.error('Error deleting penjualan konsinyasi:', deletePenjualanError);
+      throw deletePenjualanError;
+    } else {
+      console.log('✅ Penjualan konsinyasi deleted');
     }
 
-    console.log('✅ No sales found, safe to delete');
-
-    // ✅ 4. Hapus retur konsinyasi terkait (jika ada)
+    // ✅ 5. Hapus retur konsinyasi terkait (jika ada)
     const { error: deleteReturError } = await supabase
       .from('retur_konsinyasi')
       .delete()
@@ -328,10 +436,105 @@ export async function DELETE(request: NextRequest) {
       console.log('✅ Retur deleted (if any)');
     }
 
-    // ❌ TIDAK ADA STOCK RETURN DI SINI!
-    // Karena stock tidak dikurangi saat kirim konsinyasi,
-    // maka tidak perlu dikembalikan saat delete
-    console.log('ℹ️ Stock NOT returned (was never reduced)');
+    // ✅ STOCK & CASH RESTORATION: Restore both stock and cash from konsinyasi sales
+    // When deleting a konsinyasi transaction, it means it "never happened"
+    // So: restore stock AND reverse cash transactions
+    console.log('🔄 Restoring stock reduced by konsinyasi sales...');
+    console.log('💰 Reversing cash received from konsinyasi sales...');
+
+    const { data: allSales } = await supabase
+      .from('penjualan_konsinyasi')
+      .select('produk_id, jumlah_terjual, total_nilai_kita, kas_id, id')
+      .in('detail_konsinyasi_id', konsinyasi.detail_konsinyasi.map((d: any) => d.id));
+
+    if (allSales && allSales.length > 0) {
+      // 🔄 CASH REVERSAL: Reverse all cash received from konsinyasi sales
+      console.log('📊 Reversing cash transactions...');
+
+      for (const sale of allSales) {
+        const cashAmount = parseFloat(sale.total_nilai_kita?.toString() || '0');
+        const kasId = sale.kas_id;
+
+        if (cashAmount > 0 && kasId) {
+          console.log(`  💸 Cash reversal: Sale from kas ${kasId}, amount ${cashAmount}`);
+
+          // Get current kas balance
+          const { data: kasData } = await supabase
+            .from('kas')
+            .select('saldo, nama_kas')
+            .eq('id', kasId)
+            .single();
+
+          if (kasData) {
+            const newSaldo = parseFloat(kasData.saldo.toString()) - cashAmount;
+            console.log(`  💵 Kas ${kasData.nama_kas}: ${kasData.saldo} → ${newSaldo}`);
+
+            // Reverse kas transaction
+            const { error: kasUpdateError } = await supabase
+              .from('kas')
+              .update({ saldo: newSaldo })
+              .eq('id', kasId);
+
+            if (kasUpdateError) {
+              console.error(`⚠️ Failed to reverse kas ${kasId}:`, kasUpdateError);
+            } else {
+              // Reverse transaction record
+              const { error: transaksiKasError } = await supabase
+                .from('transaksi_kas')
+                .insert({
+                  kas_id: kasId,
+                  tanggal_transaksi: new Date().toISOString().split('T')[0],
+                  debit: cashAmount, // Debit means money leaving kas
+                  kredit: 0,
+                  keterangan: `Reversal: Delete Konsinyasi Sale #${sale.id}`
+                });
+
+              if (transaksiKasError) {
+                console.error(`⚠️ Failed to record kas reversal for sale ${sale.id}:`, transaksiKasError);
+              }
+            }
+          }
+        }
+      }
+
+      // Group by produk_id to get total sold per product
+      const soldByProduct = allSales.reduce((acc: any, sale: any) => {
+        const prodId = sale.produk_id;
+        const soldQty = parseFloat(sale.jumlah_terjual?.toString() || '0');
+        acc[prodId] = (acc[prodId] || 0) + soldQty;
+        return acc;
+      }, {});
+
+      // Restore stock for each product that was sold
+      for (const [productId, totalSold] of Object.entries(soldByProduct)) {
+        const soldAmount = totalSold as number;
+        const productDetail = konsinyasi.detail_konsinyasi.find((d: any) => d.produk_id === productId);
+        const currentProductStock = parseFloat(productDetail?.produk?.stok?.toString() || '0');
+
+        if (soldAmount > 0) {
+          const newStock = currentProductStock + soldAmount;
+          console.log(`  ↗️ Restoring stock: ${currentProductStock} + ${soldAmount} = ${newStock} for ${productDetail?.produk?.nama_produk}`);
+
+          // ✅ Use explicit value to ensure it works
+          const { error: stockUpdateError } = await supabase
+            .from('produk')
+            .update({
+              stok: newStock,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', productId);
+
+          if (stockUpdateError) {
+            console.error(`⚠️ Failed to restore stock for product ${productId}:`, stockUpdateError);
+            throw new Error(`Stock restoration failed: ${stockUpdateError.message}`);
+          } else {
+            console.log(`✅ Stock restored to ${newStock} for product ${productId}`);
+          }
+        }
+      }
+    } else {
+      console.log('ℹ️ No sales records found, no stock/cash to restore');
+    }
 
     // ✅ 5. Hapus detail konsinyasi
     const { error: deleteDetailError } = await supabase

@@ -125,7 +125,7 @@ export default function KonsinyasiPage() {
       const json = await res.json();
 
       if (res.ok) {
-        alert('✅ Konsinyasi berhasil dihapus dan stock dikembalikan ke gudang');
+        alert(`✅ ${json.message || 'Konsinyasi berhasil dihapus'}`);
         fetchTransaksi();
       } else {
         alert(`❌ ${json.error || 'Gagal menghapus konsinyasi'}`);
@@ -303,7 +303,7 @@ export default function KonsinyasiPage() {
                         <Eye size={16} />
                         Detail
                       </button>
-                      {item.status === 'Aktif' && (
+                      {(item.status === 'Aktif' || item.status === 'Selesai') && (
                         <button
                           onClick={() => handleDeleteKonsinyasi(item.id)}
                           className="flex items-center justify-center gap-2 px-3 py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition text-sm"
@@ -410,7 +410,7 @@ export default function KonsinyasiPage() {
                             >
                               <Eye size={18} />
                             </button>
-                            {item.status === 'Aktif' && (
+                            {(item.status === 'Aktif' || item.status === 'Selesai') && (
                               <button
                                 onClick={() => handleDeleteKonsinyasi(item.id)}
                                 className="text-red-600 hover:text-red-800 transition"

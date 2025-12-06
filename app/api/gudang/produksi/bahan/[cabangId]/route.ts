@@ -11,50 +11,54 @@ export async function GET(
 
     console.log('Fetching bahan for cabang:', cabangId);
 
-    // Query bahan (raw materials) yang tersedia di cabang tertentu
-    // Bahan adalah produk yang sudah dibeli dan diterima, ada di stock_barang
-    const { data, error } = await supabase
+    // Step 1: Cari produk yang ada di stock_barang untuk cabang ini
+    const { data: stockData, error: stockError } = await supabase
       .from('stock_barang')
-      .select(`
-        produk_id,
-        jumlah,
-        produk:produk_id (
-          id,
-          nama_produk,
-          kode_produk,
-          satuan,
-          hpp
-        )
-      `)
+      .select('produk_id')
       .eq('cabang_id', parseInt(cabangId))
-      .gt('jumlah', 0) // Hanya yang ada stocknya
-      .order('produk_id');
+      .gt('jumlah', 0);
+
+    if (stockError) {
+      console.error('Error fetching stock data for cabang:', stockError);
+      throw stockError;
+    }
+
+    // Jika tidak ada produk di cabang ini
+    if (!stockData || stockData.length === 0) {
+      console.log('No products found in stock for cabang:', cabangId);
+      return NextResponse.json({ data: [] });
+    }
+
+    // Extract produk IDs
+    const produkIds = [...new Set(stockData.map(item => item.produk_id))];
+    console.log('Found produk IDs in cabang:', produkIds);
+
+    // Step 2: Ambil produk detail dari master produk yang memiliki stock > 0
+    const { data, error } = await supabase
+      .from('produk')
+      .select('id, nama_produk, kode_produk, satuan, stok, hpp')
+      .in('id', produkIds) // Hanya produk yang ada di cabang ini
+      .gt('stok', 0) // Hanya yang masih ada stock
+      .not('nama_produk', 'is', null)
+      .order('nama_produk');
 
     if (error) {
       console.error('Supabase error:', error);
       throw error;
     }
 
-    console.log('Raw stock_barang result:', data);
+    console.log('Raw produk table result:', data);
 
-    // Deduplicate by produk_id to avoid React key conflicts
-    const uniqueProducts = new Map();
-    data?.forEach((item: any) => {
-      if (item.produk_id && !uniqueProducts.has(item.produk_id)) {
-        uniqueProducts.set(item.produk_id, {
-          produk_id: item.produk_id,
-          nama_produk: item.produk?.nama_produk || '-',
-          stok: item.jumlah,
-          satuan: item.produk?.satuan || 'pcs',
-          terakhir_dibeli: null, // Remove this field since it doesn't exist
-          hpp: item.produk?.hpp || 0
-        });
-      }
-    });
+    // Transform ke format yang diperlukan modal
+    const bahan = data?.map((produk: any) => ({
+      produk_id: produk.id,
+      nama_produk: produk.nama_produk,
+      stok: produk.stok, // Gunakan stock dari master produk table
+      satuan: produk.satuan || 'pcs',
+      hpp: produk.hpp || 0
+    })) || [];
 
-    const bahan = Array.from(uniqueProducts.values());
-
-    console.log('Transformed bahan data:', bahan);
+    console.log('Transformed bahan data to match modal format:', bahan);
 
     return NextResponse.json({ data: bahan });
   } catch (error: any) {

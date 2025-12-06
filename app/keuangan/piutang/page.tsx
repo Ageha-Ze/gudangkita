@@ -104,8 +104,7 @@ export default function PiutangPenjualanPage() {
     fetchPiutangData();
     fetchCabangList();
     fetchKasList();
-
-  }, []);
+  }, [selectedCabang, selectedStatus, searchQuery]);
 
   const fetchPiutangData = async () => {
     try {
@@ -131,18 +130,38 @@ export default function PiutangPenjualanPage() {
 
   const fetchCabangList = async () => {
   try {
+    console.log('🔍 Fetching cabang list...');
     const response = await fetch('/api/master/cabang');
+    console.log('📡 Cabang API response status:', response.status);
+
     if (response.ok) {
       const data = await response.json();
-      // Ensure data is an array (adjust if API returns { data: [...] })
-      setCabangList(Array.isArray(data) ? data : []);
+      console.log('📦 Cabang raw data:', data);
+
+      // Check if data is wrapped in a data property (common API pattern)
+      const cabangData = data.data || data;
+      console.log('📋 Processed cabang data:', cabangData);
+      console.log('📋 Is Array?', Array.isArray(cabangData));
+      console.log('📋 Array length:', Array.isArray(cabangData) ? cabangData.length : 'N/A');
+
+      if (Array.isArray(cabangData) && cabangData.length > 0) {
+        console.log('✅ Sample cabang item:', cabangData[0]);
+      }
+
+      // Ensure cabangData is an array
+      const finalData = Array.isArray(cabangData) ? cabangData : [];
+      console.log('🔄 Final cabang data to set:', finalData);
+      setCabangList(finalData);
     } else {
-      console.error('Failed to fetch cabang list:', response.status);
-      setCabangList([]);  // Default to empty array
+      console.error('❌ Response not OK:', response.status);
+      const errorText = await response.text();
+      console.error('❌ Error response:', errorText);
+      setCabangList([]);
     }
   } catch (error) {
-    console.error('Error fetching cabang list:', error);
-    setCabangList([]);  // Default to empty array
+    console.error('💥 Error fetching cabang list:', error);
+    console.error('💥 Error details:', error);
+    setCabangList([]);
   }
 };
 
@@ -212,18 +231,10 @@ export default function PiutangPenjualanPage() {
     }
   };
 
-  // Filter data (client-side for simplicity; can move to API if needed)
-  const filteredData = piutangData.filter(item => {
-    const matchSearch =
-      (item.nota?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-      (item.customer?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-      (item.sales?.toLowerCase() || '').includes(searchQuery.toLowerCase());
-
-    const matchCabang = selectedCabang === 'all' || item.cabang === selectedCabang;
-    const matchStatus = selectedStatus === 'all' || item.status === selectedStatus;
-
-    return matchSearch && matchCabang && matchStatus;
-  });
+  // Server-side filtering is handled by API, only filter status client-side if needed
+  const filteredData = selectedStatus === 'all'
+    ? piutangData
+    : piutangData.filter(item => item.status === selectedStatus);
 
   // Hitung total
   const totalPiutang = filteredData.reduce((sum, item) => sum + item.totalPiutang, 0);
@@ -309,7 +320,7 @@ export default function PiutangPenjualanPage() {
     >
       <option value="all">Semua Cabang</option>
       {cabangList.map(cabang => (
-        <option key={cabang.id} value={cabang.nama_cabang}>
+        <option key={cabang.id} value={cabang.id}>
           {cabang.nama_cabang}
         </option>
       ))}

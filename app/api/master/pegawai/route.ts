@@ -61,3 +61,58 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = await supabaseServer();
+    const body = await request.json();
+
+    // Validation
+    const { nama, jabatan } = body;
+    if (!nama || !jabatan) {
+      return NextResponse.json(
+        { error: 'Nama dan jabatan harus diisi' },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabase
+      .from('pegawai')
+      .insert([body])
+      .select(`
+        id,
+        nama,
+        jabatan,
+        no_telp,
+        level_jabatan,
+        daerah_operasi,
+        cabang_id,
+        nomor_ktp,
+        tanggal_lahir,
+        user_id,
+        cabang:cabang_id (
+          id,
+          nama_cabang,
+          kode_cabang
+        ),
+        user:user_id (
+          id,
+          username
+        )
+      `)
+      .single();
+
+    if (error) throw error;
+
+    return NextResponse.json({
+      data,
+      message: 'Pegawai berhasil ditambahkan'
+    }, { status: 201 });
+  } catch (error: any) {
+    console.error('Error creating pegawai:', error);
+    return NextResponse.json(
+      { error: error.message },
+      { status: 500 }
+    );
+  }
+}

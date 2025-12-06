@@ -105,6 +105,18 @@ export default function PegawaiModal({ isOpen, onClose, pegawai, onSuccess }: Pe
       return;
     }
 
+    // Validate date of birth
+    if (formData.tanggal_lahir) {
+      const selectedDate = new Date(formData.tanggal_lahir);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Reset time to start of day
+
+      if (selectedDate >= today) {
+        setError('Tanggal lahir tidak boleh hari ini atau di masa depan');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
     setError(null);
 
@@ -218,10 +230,14 @@ export default function PegawaiModal({ isOpen, onClose, pegawai, onSuccess }: Pe
         <div>
           <label className="block text-gray-700 mb-2">No Telepon</label>
           <input
-            type="text"
+            type="tel"
+            inputMode="numeric"
             className="w-full px-4 py-2 bg-blue-50 border border-gray-300 rounded-lg"
             value={formData.no_telp}
-            onChange={(e) => setFormData({ ...formData, no_telp: e.target.value })}
+            onChange={(e) => {
+              const value = e.target.value.replace(/[^0-9]/g, '');
+              setFormData({ ...formData, no_telp: value });
+            }}
             disabled={isSubmitting}
             placeholder="Contoh: 081234567890"
           />
@@ -260,9 +276,13 @@ export default function PegawaiModal({ isOpen, onClose, pegawai, onSuccess }: Pe
           <label className="block text-gray-700 mb-2">Nomor KTP</label>
           <input
             type="text"
+            inputMode="numeric"
             className="w-full px-4 py-2 bg-blue-50 border border-gray-300 rounded-lg"
             value={formData.nomor_ktp}
-            onChange={(e) => setFormData({ ...formData, nomor_ktp: e.target.value })}
+            onChange={(e) => {
+              const value = e.target.value.replace(/[^0-9]/g, '');
+              setFormData({ ...formData, nomor_ktp: value });
+            }}
             disabled={isSubmitting}
             placeholder="16 digit nomor KTP"
             maxLength={16}
@@ -277,6 +297,7 @@ export default function PegawaiModal({ isOpen, onClose, pegawai, onSuccess }: Pe
             value={formData.tanggal_lahir}
             onChange={(e) => setFormData({ ...formData, tanggal_lahir: e.target.value })}
             disabled={isSubmitting}
+            max={new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0]} // Yesterday or earlier
           />
         </div>
 

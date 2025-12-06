@@ -300,10 +300,12 @@ export default function KasPage() {
                       <td className="px-6 py-4 text-center">
                         <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
                           kas.tipe_kas.toLowerCase() === 'bank' ? 'bg-green-100 text-green-700' :
-                          kas.tipe_kas.toLowerCase() === 'cash' ? 'bg-yellow-100 text-yellow-700' :
+                          kas.tipe_kas.toLowerCase() === 'kas_tunai' ? 'bg-yellow-100 text-yellow-700' :
                           'bg-gray-100 text-gray-700'
                         }`}>
-                          {kas.tipe_kas}
+                          {kas.tipe_kas.toLowerCase() === 'bank' ? 'Bank' :
+                           kas.tipe_kas.toLowerCase() === 'kas_tunai' ? 'Cash' :
+                           kas.tipe_kas}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-center">

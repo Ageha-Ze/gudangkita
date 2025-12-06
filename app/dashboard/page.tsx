@@ -266,22 +266,41 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <div className="w-full h-[300px]">
+              <div className="w-full h-[250px] sm:h-[300px] md:h-[350px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={dashboardData?.salesData || []}>
+                  <LineChart data={dashboardData?.salesData || []} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="month" tick={{ fill: '#6b7280', fontSize: 12 }} />
-                    <YAxis tick={{ fill: '#6b7280', fontSize: 12 }} />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: '#fff', 
+                    <XAxis
+                      dataKey="month"
+                      tick={{ fill: '#6b7280', fontSize: 10 }}
+                      angle={-45}
+                      textAnchor="end"
+                      height={60}
+                      interval={0}
+                    />
+                    <YAxis
+                      tick={{ fill: '#6b7280', fontSize: 10 }}
+                      tickFormatter={(value) => formatCurrency(value).replace(/\.00$/, '')}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#fff',
                         border: '1px solid #e5e7eb',
                         borderRadius: '8px',
-                        boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'
+                        boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                        fontSize: '12px'
                       }}
                       formatter={(value: number) => formatCurrency(value)}
+                      labelStyle={{ color: '#374151', fontWeight: '500' }}
                     />
-                    <Line type="monotone" dataKey="sales" stroke="#3b82f6" strokeWidth={3} dot={{ fill: '#3b82f6', r: 5 }} />
+                    <Line
+                      type="monotone"
+                      dataKey="sales"
+                      stroke="#3b82f6"
+                      strokeWidth={2}
+                      dot={{ fill: '#3b82f6', r: 4 }}
+                      activeDot={{ r: 6, stroke: '#3b82f6', strokeWidth: 2 }}
+                    />
                   </LineChart>
                 </ResponsiveContainer>
               </div>

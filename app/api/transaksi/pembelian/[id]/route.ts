@@ -121,6 +121,64 @@ export async function GET(
   }
 }
 
+// 🔍 Helper: Check if purchase stock has been consumed by sales
+async function checkPurchaseStockConsumed(purchaseId: number) {
+  try {
+    const supabase = await supabaseServer();
+
+    // Step 1: Get purchased items and quantities
+    const { data: purchaseDetails } = await supabase
+      .from('detail_pembelian')
+      .select('produk_id, jumlah')
+      .eq('pembelian_id', purchaseId);
+
+    if (!purchaseDetails || purchaseDetails.length === 0) {
+      return 0; // No stock was ever added from this purchase
+    }
+
+    let totalConsumedFromPurchase = 0;
+
+    // Step 2: For each purchased product, check if stock level has decreased
+    for (const detail of purchaseDetails) {
+      const purchasedAmount = parseFloat(detail.jumlah?.toString() || '0');
+
+      // Get current stock level
+      const { data: currentStock } = await supabase
+        .from('produk')
+        .select('stok, nama_produk')
+        .eq('id', detail.produk_id)
+        .single();
+
+      const currentStockLevel = parseFloat(currentStock?.stok?.toString() || '0');
+
+      console.log(`🔍 Purchase ${purchaseId} - ${currentStock?.nama_produk}: Purchased ${purchasedAmount}, Current stock: ${currentStockLevel}`);
+
+      // If current stock is less than purchased amount, it was consumed
+      // This accounts for sales, consignment, stock opname, or any consumption
+      const consumedForProduct = purchasedAmount - currentStockLevel;
+
+      if (consumedForProduct > 0) {
+        totalConsumedFromPurchase += consumedForProduct;
+        console.log(`  ❌ Consumed: ${consumedForProduct} units`);
+      }
+    }
+
+    if (totalConsumedFromPurchase > 0) {
+      console.log(`❌ Purchase ${purchaseId} stock consumed: ${totalConsumedFromPurchase} units`);
+      return totalConsumedFromPurchase;
+    }
+
+    console.log(`✅ Purchase ${purchaseId} stock not consumed`);
+    return 0;
+
+  } catch (error) {
+    console.error('Error checking purchase stock consumption:', error);
+    throw error;
+  }
+}
+
+// Move helper function to end of file
+
 // PATCH - Update pembelian
 export async function PATCH(
   request: NextRequest,
@@ -169,7 +227,7 @@ export async function PATCH(
   }
 }
 
-// DELETE - Delete pembelian dan semua data terkait
+// DELETE - Delete pembelian dan semua data terkait dengan STOCK SAFETY
 export async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -178,7 +236,7 @@ export async function DELETE(
     const supabase = await supabaseServer();
     const { id } = await context.params;
 
-    console.log('Deleting pembelian with id:', id);
+    console.log('🔒 Checking purchase safety before delete:', id);
 
     // Validasi ID
     if (!id || id === 'undefined') {
@@ -187,6 +245,19 @@ export async function DELETE(
         { status: 400 }
       );
     }
+
+    // 🔍 STEP 1: VERIFY STOCK RECEIVED HASN'T BEEN CONSUMED
+    const purchaseId = parseInt(id);
+    const consumedStock = await checkPurchaseStockConsumed(purchaseId);
+
+    if (consumedStock > 0) {
+      console.log(`❌ BLOCKED: Purchase ${purchaseId} has ${consumedStock} units consumed`);
+      return NextResponse.json({
+        error: 'Cannot delete data, because it will result in negative stock. Please delete the sales/consignment data first.'
+      }, { status: 400 });
+    }
+
+    console.log('✅ SAFE: No stock consumption detected, proceeding with deletion and kas return...');
 
     // 1. Get all cicilan untuk kembalikan kas
     const { data: cicilanList } = await supabase

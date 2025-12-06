@@ -72,7 +72,7 @@ export async function GET(request: Request) {
         .eq('pegawai_id', pegawaiId);
 
       if (konsinyasiIds && konsinyasiIds.length > 0) {
-        const ids = konsinyasiIds.map(k => k.id);
+        const ids = konsinyasiIds.map((k: any) => k.id);
 
         // Then get detail_konsinyasi that belong to these consignments
         const { data: detailIds, error: detailError } = await supabase
@@ -81,7 +81,7 @@ export async function GET(request: Request) {
           .in('konsinyasi_id', ids);
 
         if (detailIds && detailIds.length > 0) {
-          const detailIdsList = detailIds.map(d => d.id);
+          const detailIdsList = detailIds.map((d: any) => d.id);
           const { data: sales, error: salesError } = await supabase
             .from('penjualan_konsinyasi')
             .select('id, tanggal_jual, total_penjualan, status_pembayaran')
@@ -153,7 +153,7 @@ export async function GET(request: Request) {
           type_label: 'Consignment Sale',
           date: sale.tanggal_jual,
           customer: null,
-          store: sale.detail_konsinyasi?.konsinyasi?.toko?.nama_toko || '-',
+          store: '-',
           total: sale.total_penjualan,
           status: sale.status_pembayaran,
           transaction_id: `CS${sale.id.toString().padStart(4, '0')}`

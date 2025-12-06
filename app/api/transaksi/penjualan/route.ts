@@ -48,9 +48,6 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     let dataWithNotaAndTagihan = await Promise.all((allData || []).map(async (item) => {
-      const tanggal = new Date(item.tanggal).toISOString().split('T')[0].replace(/-/g, '');
-      const nomorUrut = String(item.id).padStart(7, '0');
-
       const totalPenjualan = item.detail_penjualan?.reduce(
         (sum: number, detail: any) => sum + (detail.subtotal || 0),
         0
@@ -63,9 +60,17 @@ export async function GET(request: NextRequest) {
       // Fix status_pembayaran: if not billed, should be 'Belum Lunas' regardless of database default
       const statusPembayaran = item.status === 'billed' ? item.status_pembayaran : 'Belum Lunas';
 
+      // Generate PJ format if nota_penjualan is null or missing
+      let nota_penjualan = item.nota_penjualan;
+      if (!nota_penjualan) {
+        const tanggal = new Date(item.tanggal).toISOString().split('T')[0].replace(/-/g, '');
+        const nomorUrut = String(item.id).padStart(4, '0');
+        nota_penjualan = `PJ-${tanggal}-${nomorUrut}`;
+      }
+
       return {
         ...item,
-        nota_penjualan: `${nomorUrut}${tanggal}`,
+        nota_penjualan,
         total: totalPenjualan,
         sisa_tagihan: sisaTagihan,
         status_pembayaran: statusPembayaran
@@ -203,20 +208,49 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
-    const tanggal = new Date(data.tanggal).toISOString().split('T')[0].replace(/-/g, '');
-    const nomorUrut = String(data.id).padStart(7, '0');
-    const nota_penjualan = `${nomorUrut}${tanggal}`;
+    // Generate nota_penjualan like pembelian format: PJ-YYYYMMDD-XXXX
+    const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+
+    const { data: lastPenjualan } = await supabase
+      .from('transaksi_penjualan')
+      .select('nota_penjualan')
+      .like('nota_penjualan', `PJ-${today}-%`)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    let notaNumber = 1;
+
+    if (lastPenjualan?.nota_penjualan) {
+      const lastNumber = parseInt(lastPenjualan.nota_penjualan.split('-').pop() || '0');
+      notaNumber = lastNumber + 1;
+    }
+
+    const nota_penjualan = `PJ-${today}-${notaNumber.toString().padStart(4, '0')}`;
+
+    // Save nota_penjualan to database
+    const { error: updateError } = await supabase
+      .from('transaksi_penjualan')
+      .update({ nota_penjualan })
+      .eq('id', data.id);
+
+    if (updateError) {
+      console.error('Error updating nota_penjualan:', updateError);
+      // Don't throw here, just log - nota will still be generated dynamically in GET
+    } else {
+      console.log('✅ Nota penjualan saved to database:', nota_penjualan);
+    }
 
     console.log('✅ Penjualan created with cabang_id:', data.cabang_id);
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
       data: {
         ...data,
         nota_penjualan,
         sisa_tagihan: 0
-      }, 
-      message: 'Penjualan berhasil dibuat' 
+      },
+      message: 'Penjualan berhasil dibuat'
     });
   } catch (error: any) {
     console.error('Error creating penjualan:', error);

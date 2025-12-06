@@ -84,6 +84,25 @@ export default function KasModal({ isOpen, onClose, kas, onSuccess }: KasModalPr
       return;
     }
 
+    // Validate saldo is not negative and is a valid number (0 is allowed)
+    const saldoValue = parseFloat(formData.saldo) || 0;
+    if (saldoValue < 0) {
+      setError('Saldo tidak boleh negatif');
+      return;
+    }
+    if (isNaN(saldoValue)) {
+      setError('Saldo harus berupa angka yang valid');
+      return;
+    }
+
+    // Validate tipe_kas is one of the allowed values (enum values: 'bank', 'kas_tunai')
+    const allowedTipeKas = ['bank', 'kas_tunai'];
+    if (!formData.tipe_kas || !allowedTipeKas.includes(formData.tipe_kas)) {
+      console.error('Invalid tipe_kas:', formData.tipe_kas);
+      setError('Tipe Kas harus dipilih antara Bank atau Cash');
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
 
@@ -92,7 +111,7 @@ export default function KasModal({ isOpen, onClose, kas, onSuccess }: KasModalPr
         nama_kas: formData.nama_kas,
         tipe_kas: formData.tipe_kas,
         no_rekening: formData.no_rekening,
-        saldo: parseFloat(formData.saldo) || 0,
+        saldo: saldoValue,
         cabang_id: formData.cabang_id ? parseInt(formData.cabang_id) : null,
       };
 
@@ -181,8 +200,8 @@ export default function KasModal({ isOpen, onClose, kas, onSuccess }: KasModalPr
             disabled={isSubmitting}
           >
             <option value="">Pilih Tipe Kas</option>
-            <option value="Bank">Bank</option>
-            <option value="Cash">Cash</option>
+            <option value="bank">Bank</option>
+            <option value="kas_tunai">Cash</option>
           </select>
         </div>
 
@@ -203,11 +222,24 @@ export default function KasModal({ isOpen, onClose, kas, onSuccess }: KasModalPr
           <input
             type="number"
             step="0.01"
+            min="0"
             className="w-full px-4 py-2 bg-blue-50 border border-gray-300 rounded-lg"
             value={formData.saldo}
-            onChange={(e) => setFormData({ ...formData, saldo: e.target.value })}
+            onChange={(e) => {
+              const value = e.target.value;
+              // Allow empty values, or validate as number
+              if (value === '' || (!isNaN(Number(value)) && Number(value) >= 0)) {
+                setFormData({ ...formData, saldo: value });
+              }
+              // Ignore invalid inputs (negative numbers, scientific notation, etc.)
+            }}
+            onBlur={(e) => {
+              // On blur, clean up the value
+              const numValue = parseFloat(e.target.value) || 0;
+              setFormData({ ...formData, saldo: numValue.toFixed(2) });
+            }}
             disabled={isSubmitting}
-            placeholder="0"
+            placeholder="0.00"
           />
         </div>
 

@@ -85,7 +85,7 @@ export default function PembelianPage() {
         alert('Data berhasil dihapus dan saldo kas dikembalikan');
         fetchPembelians();
       } else {
-        console.error('Delete failed:', json);
+        console.warn('Delete failed:', json);
         alert('Gagal menghapus data: ' + (json.error || 'Unknown error'));
       }
     } catch (error) {

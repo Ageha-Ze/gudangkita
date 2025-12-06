@@ -82,11 +82,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ✅ Validasi: Jumlah tidak melebihi sisa
-    if (jumlah > detail.jumlah_sisa) {
+    // ✅ Validasi: Jumlah tidak melebihi sisa YANG BELUM TERJUAL
+    // jumlah_sisa adalah jumlah yang masih di toko ( belum terjual )
+    // tetapi yang sudah dikirim ke toko adalah jumlah_titip
+    // jadi kita perlu menghitung berapa yang benar-benar bisa diretur
+
+    const sudahTerjual = parseFloat(detail.jumlah_terjual?.toString() || '0');
+    const totalTerkirim = parseFloat(detail.jumlah_titip?.toString() || '0');
+    const maksimumBisaDiretur = totalTerkirim - sudahTerjual;
+
+    console.log(`🔍 Retur check: total_terkirim-${totalTerkirim}, sudah_terjual-${sudahTerjual}, maksimum_retur-${maksimumBisaDiretur}, jumlah_sisa-${detail.jumlah_sisa}`);
+
+    if (jumlah > maksimumBisaDiretur) {
       return NextResponse.json(
-        { 
-          error: `Jumlah retur (${jumlah}) melebihi sisa barang (${detail.jumlah_sisa})` 
+        {
+          error: `Jumlah retur (${jumlah}) melebihi yang bisa diretur (${maksimumBisaDiretur}). Yang bisa diretur = total terkirim - yang sudah terjual`
         },
         { status: 400 }
       );
@@ -116,6 +126,7 @@ export async function POST(request: NextRequest) {
         tanggal_retur: body.tanggal_retur,
         jumlah_retur: jumlah,
         kondisi: body.kondisi || 'Baik',
+        jenis_retur: body.jenis_retur || 'Normal',
         keterangan: body.keterangan || null,
       })
       .select()
@@ -152,94 +163,24 @@ export async function POST(request: NextRequest) {
       throw new Error('Gagal update detail konsinyasi');
     }
 
-    // ✅ Kembalikan stock HANYA jika kondisi "Baik"
-    if (body.kondisi === 'Baik') {
-      console.log('📦 Returning stock to inventory...');
+    // ✅ RETUR KONSINYASI: Tidak mengubah stock produk, hanya status konsinyasi
+    // Items yang diretur hanya mengubah status detail konsinyasi (sisa → kembali)
+    // Stock tetap sama karena barang sudah dikembalikan dari toko ke gudang saat pencatatan retur
 
-      const currentStok = parseFloat(detail.produk?.stok?.toString() || '0');
-      const newStok = currentStok + jumlah;
-
-      console.log(`  ${detail.produk?.nama_produk}: ${currentStok} + ${jumlah} = ${newStok}`);
-
-      // Update stock produk
-      const { error: updateStockError } = await supabase
-        .from('produk')
-        .update({ 
-          stok: newStok,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', detail.produk_id);
-
-      if (updateStockError) {
-        console.error('Error updating stock:', updateStockError);
-        // Rollback detail konsinyasi
-        await supabase
-          .from('detail_konsinyasi')
-          .update({
-            jumlah_sisa: detail.jumlah_sisa,
-            jumlah_kembali: detail.jumlah_kembali,
-          })
-          .eq('id', body.detail_konsinyasi_id);
-        // Rollback retur
-        await supabase
-          .from('retur_konsinyasi')
-          .delete()
-          .eq('id', retur.id);
-        throw new Error('Gagal update stock produk');
-      }
-
-      // ✅ Cek duplikasi stock_barang sebelum insert
-      const { data: existingStock } = await supabase
-        .from('stock_barang')
-        .select('id')
-        .eq('produk_id', detail.produk_id)
-        .eq('cabang_id', detail.konsinyasi?.cabang_id)
-        .eq('tanggal', body.tanggal_retur)
-        .eq('tipe', 'masuk')
-        .eq('keterangan', `Retur Konsinyasi #${retur.id} - ${body.kondisi}`)
-        .maybeSingle();
-
-      if (!existingStock) {
-        // Insert stock movement
-        const { error: stockBarangError } = await supabase
-          .from('stock_barang')
-          .insert({
-            produk_id: detail.produk_id,
-            cabang_id: detail.konsinyasi?.cabang_id,
-            jumlah: jumlah,
-            tanggal: body.tanggal_retur,
-            tipe: 'masuk',
-            keterangan: `Retur Konsinyasi #${retur.id} - ${body.kondisi}`,
-            hpp: parseFloat(detail.harga?.toString() || '0')
-          });
-
-        if (stockBarangError) {
-          console.error('⚠️ Warning: Failed to insert stock_barang:', stockBarangError);
-          // Don't rollback, stock sudah berubah dan itu yang penting
-        } else {
-          console.log('  ✅ Stock history recorded');
-        }
-      } else {
-        console.log('  ⏭️ Stock history already exists, skipping insert');
-      }
-
-      console.log('✅ Stock returned successfully');
-    } else {
-      console.log(`⚠️ Kondisi: ${body.kondisi}, stock NOT returned`);
-    }
+    console.log(`ℹ️ Retur konsinyasi: Stock produk tetap sama! (Hanya status konsinyasi berubah)`);
+    console.log(`   - Jumlah sisa berkurang: ${detail.jumlah_sisa} → ${newJumlahSisa}`);
+    console.log(`   - Jumlah kembali bertambah: ${detail.jumlah_kembali} → ${newJumlahKembali}`);
 
     return NextResponse.json({
       success: true,
-      message: `Retur berhasil dicatat${body.kondisi === 'Baik' ? ' dan stock dikembalikan' : ''}`,
+      message: `Retur berhasil dicatat (status konsinyasi diperbarui)`,
       data: {
         retur_id: retur.id,
         produk: detail.produk?.nama_produk,
         jumlah_retur: jumlah,
         kondisi: body.kondisi,
-        stock_returned: body.kondisi === 'Baik',
-        new_stock: body.kondisi === 'Baik' 
-          ? parseFloat(detail.produk?.stok?.toString() || '0') + jumlah
-          : parseFloat(detail.produk?.stok?.toString() || '0')
+        stock_returned: false,
+        new_stock: parseFloat(detail.produk?.stok?.toString() || '0')
       }
     });
   } catch (error: any) {

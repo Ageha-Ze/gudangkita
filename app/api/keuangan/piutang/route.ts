@@ -100,6 +100,14 @@ export async function GET(request: NextRequest) {
       const cabang = Array.isArray(item.cabang) ? item.cabang[0] : item.cabang;
       const customer = Array.isArray(item.customers) ? item.customers[0] : item.customers;
 
+      // Generate nota_penjualan if null (same logic as penjualan API)
+      let nota_penjualan = item.nota_penjualan;
+      if (!nota_penjualan) {
+        const tanggal = new Date(item.tanggal).toISOString().split('T')[0].replace(/-/g, '');
+        const nomorUrut = String(item.id).padStart(4, '0');
+        nota_penjualan = `PJ-${tanggal}-${nomorUrut}`;
+      }
+
       // 🔍 DEBUG LOG
       const dibayarFromDB = parseFloat(item.dibayar?.toString() || '0');
       if (Math.abs(dibayarFromDB - terbayar) > 0.01) {
@@ -108,7 +116,7 @@ export async function GET(request: NextRequest) {
 
       return {
         id: item.id,
-        nota: item.nota_penjualan,
+        nota: nota_penjualan, // ✅ Use generated nota_penjualan if null
         tanggal: item.tanggal ? new Date(item.tanggal).toISOString().split('T')[0] : '',
         cabang: cabang?.nama_cabang || '-',
         cabangId: cabang?.id || 0,

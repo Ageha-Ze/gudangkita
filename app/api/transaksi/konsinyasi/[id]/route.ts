@@ -135,45 +135,28 @@ export async function PUT(
     if (newStatus === 'Selesai') {
       console.log('📦 Finishing konsinyasi...');
 
-      // ⚠️ IMPORTANT: Stock tidak perlu dikembalikan karena:
-      // - Saat kirim konsinyasi: stock TIDAK dikurangi
-      // - Saat penjualan: stock SUDAH dikurangi
-      // - Saat retur: stock SUDAH dikembalikan
-      // - Jumlah_sisa = barang yang masih di toko tapi BELUM terjual & BELUM diretur
-      // - Barang ini SUDAH ADA di stock kita (tidak pernah berkurang)
-      
-      // Yang perlu dilakukan: Update detail konsinyasi saja
+      // 🚫 REMOVED: Previously moved sisa to kembali automatically
+      // Now: Let remaining items stay as sisa so user can handle them explicitly
+
       const details = konsinyasi.detail_konsinyasi || [];
-      
+      let hasRemainingItems = false;
+
       for (const detail of details) {
         const jumlahSisa = parseFloat(detail.jumlah_sisa?.toString() || '0');
-        
+
         if (jumlahSisa > 0) {
-          console.log(`  ℹ️ Closing detail: ${detail.produk?.nama_produk}, sisa di toko: ${jumlahSisa}`);
-          console.log(`    Stock TIDAK berubah (barang sisa masih ada di stock kita)`);
-
-          // ✅ Update detail konsinyasi: pindahkan sisa ke jumlah_kembali
-          const { error: updateDetailError } = await supabase
-            .from('detail_konsinyasi')
-            .update({
-              jumlah_kembali: parseFloat(detail.jumlah_kembali?.toString() || '0') + jumlahSisa,
-              jumlah_sisa: 0,
-              keterangan: `Selesai - Sisa ${jumlahSisa} pcs dianggap kembali`
-            })
-            .eq('id', detail.id);
-
-          if (updateDetailError) {
-            console.error('Error updating detail:', updateDetailError);
-            return NextResponse.json({
-              error: `Gagal update detail konsinyasi`
-            }, { status: 500 });
-          }
-
-          console.log(`    ✅ Detail updated (marked as returned)`);
+          hasRemainingItems = true;
+          console.log(`  ℹ️ Item still pending: ${detail.produk?.nama_produk}, sisa: ${jumlahSisa}`);
+          console.log(`    User can now use 'Retur' with specific type (Normal/Hilang/Rusak/Gratis)`);
         }
       }
 
-      console.log('✅ Konsinyasi marked as finished (no stock changes needed)');
+      if (hasRemainingItems) {
+        console.log('⚠️ Warning: Konsinyasi completed but items still pending as "sisa"');
+        console.log('   Use Retur functionality to categorize these remaining items');
+      }
+
+      console.log('✅ Konsinyasi marked as finished (remaining items stay pending for categorization)');
     }
 
     if (newStatus === 'Batal') {

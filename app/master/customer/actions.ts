@@ -18,27 +18,46 @@ type ActionResult<T = any> = {
 async function generateKodeCustomer(): Promise<string> {
   try {
     const supabase = supabaseServer();
-    
+
     const { data, error } = await supabase
       .from('customer')
-      .select('kode_customer')
+      .select('kode_customer, id')
       .order('id', { ascending: false })
       .limit(1);
 
     if (error) {
       console.error('Error generating kode:', error);
-      return '1';
+      return `CUST-${Date.now()}`;
     }
 
     if (!data || data.length === 0) {
       return '1';
     }
 
-    const lastKode = parseInt(data[0].kode_customer);
-    return (lastKode + 1).toString();
+    const lastKode = data[0].kode_customer;
+
+    // Handle NaN or invalid kode_customer
+    if (!lastKode || lastKode === 'NaN' || isNaN(parseInt(lastKode))) {
+      // If code is NaN or non-numeric, use timestamp-based generation
+      return `CUST-${Date.now()}`;
+    }
+
+    // If code is already a CUST-timestamp format, generate a new timestamp
+    if (lastKode.startsWith('CUST-')) {
+      return `CUST-${Date.now()}`;
+    }
+
+    // For numeric codes, increment
+    const lastKodeNum = parseInt(lastKode);
+    if (isNaN(lastKodeNum)) {
+      // Fallback to timestamp if parsing fails
+      return `CUST-${Date.now()}`;
+    }
+
+    return (lastKodeNum + 1).toString();
   } catch (error) {
     console.error('Exception in generateKodeCustomer:', error);
-    return '1';
+    return `CUST-${Date.now()}`;
   }
 }
 

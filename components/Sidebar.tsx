@@ -12,8 +12,6 @@ import {
 } from 'lucide-react';
 import { logoutUser, getUserSession } from '@/app/login/actions';
 
-
-
 interface MenuItem {
   id: string;
   name: string;
@@ -121,6 +119,22 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
   const [user, setUser] = useState({ name: 'Admin User', email: 'admin@gudangkita.com' });
   const [username, setUsername] = useState('User');
   const [marqueeText, setMarqueeText] = useState('');
+  const [isMobile, setIsMobile] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+
+  // Detect mobile device
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Determine if sidebar should be expanded
+  const shouldBeExpanded = isMobile ? isExpanded : (isExpanded || isHovered);
 
   // Fetch notification counts for badges
   const fetchNotificationCounts = async () => {
@@ -219,7 +233,7 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
       const time = `${hours}:${minutes}`;
 
       setMarqueeText(
-        `selamat ${greeting} ${username}, now is ${date} ${time} WIB`
+        `selamat ${greeting} ${username}, sekarang tanggal ${date}, pukul ${time} WIB`
       );
     };
 
@@ -284,9 +298,11 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
     <>
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 h-full bg-white shadow-xl border-r border-gray-200 z-50 transition-all duration-300 ease-in-out ${
-          isExpanded ? 'w-80' : 'w-20'
-        }`}
+        onMouseEnter={() => !isMobile && setIsHovered(true)}
+        onMouseLeave={() => !isMobile && setIsHovered(false)}
+        className={`fixed top-0 left-0 h-screen bg-white shadow-xl border-r border-gray-200 z-50 transition-all duration-300 ease-in-out ${
+          shouldBeExpanded ? 'w-80' : 'w-20'
+        } flex flex-col`}
       >
         {/* Header */}
         <div className="px-6 py-6 border-b border-gray-100">
@@ -294,7 +310,7 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-sm">
               <Database className="w-5 h-5 text-white" />
             </div>
-            {isExpanded && (
+            {shouldBeExpanded && (
               <div className="animate-fade-in">
                 <h1 className="text-lg font-bold text-gray-900">GUDANG KITA</h1>
                 <p className="text-xs text-gray-500">Warehouse Management</p>
@@ -305,7 +321,7 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
 
         {/* Marquee Text */}
         <div className="px-3 py-2 bg-gradient-to-r from-blue-50 to-purple-50 border-b border-blue-100">
-          {isExpanded ? (
+          {shouldBeExpanded ? (
             <p className="text-xs font-medium text-gray-700 text-center">
               {marqueeText}
             </p>
@@ -316,79 +332,84 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
           )}
         </div>
 
-        {/* Toggle Button - Positioned below header */}
-        <div className="px-3 py-2">
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="w-full p-2 hover:bg-gray-100 rounded-lg transition-all duration-200 flex items-center justify-center"
-            title={isExpanded ? 'Collapse Sidebar' : 'Expand Sidebar'}
-          >
-            {isExpanded ? (
-              <ChevronLeft className="w-5 h-5 text-gray-600" />
-            ) : (
-              <ChevronRight className="w-5 h-5 text-gray-600" />
-            )}
-          </button>
-        </div>
+        {/* Toggle Button - Only visible on mobile */}
+        {isMobile && (
+          <div className="px-3 py-2">
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="w-full p-2 hover:bg-gray-100 rounded-lg transition-all duration-200 flex items-center justify-center"
+              title={isExpanded ? 'Collapse Sidebar' : 'Expand Sidebar'}
+            >
+              {isExpanded ? (
+                <ChevronLeft className="w-5 h-5 text-gray-600" />
+              ) : (
+                <ChevronRight className="w-5 h-5 text-gray-600" />
+              )}
+            </button>
+          </div>
+        )}
 
         {/* Navigation */}
-        <nav className="flex-1 overflow-y-auto py-4">
+        <nav className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden py-4 scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent hover:scrollbar-thumb-gray-400 transition-colors">
           <div className="px-4 mb-4">
-            {isExpanded && (
+            {shouldBeExpanded && (
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
                 Navigation
               </p>
             )}
           </div>
 
-          <div className="space-y-1 px-3">
-            {menuItems.map((item) => (
+          <div className="space-y-0.5 px-3">{menuItems.map((item) => (
               <div key={item.id}>
                 {item.submenu ? (
                   <div>
-                    {isExpanded ? (
+                    {shouldBeExpanded ? (
                       <button
                         onClick={() => toggleMenu(item.id)}
-                        className={`w-full flex items-center justify-between px-3 py-3 rounded-xl transition-all duration-200 ${
+                        className={`group w-full flex items-center justify-between px-3 py-2 rounded-md transition-all duration-150 ${
                           openMenus.includes(item.id)
-                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                            ? 'bg-gray-100 text-gray-900'
+                            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                         }`}
                       >
                         <div className="flex items-center gap-3">
-                          <item.icon className="w-5 h-5 flex-shrink-0" />
-                          <span className="text-sm font-medium truncate">{item.name}</span>
+                          <item.icon className="w-4 h-4 flex-shrink-0 transition-transform duration-150 group-hover:scale-110" />
+                          <span className="text-sm font-normal truncate">{item.name}</span>
                         </div>
                         <ChevronDown
-                          className={`w-4 h-4 transition-transform ${
+                          className={`w-3.5 h-3.5 transition-transform duration-200 ${
                             openMenus.includes(item.id) ? 'rotate-180' : ''
                           }`}
                         />
                       </button>
                     ) : (
                       <button
-                        onClick={() => setIsExpanded(true)}
-                        className="w-full flex items-center justify-center px-3 py-3 rounded-xl text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all duration-200"
+                        onClick={() => isMobile && setIsExpanded(true)}
+                        className="group w-full flex items-center justify-center px-3 py-2 rounded-md text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all duration-150 relative"
                       >
-                        <item.icon className="w-5 h-5 flex-shrink-0" />
+                        <item.icon className="w-4 h-4 flex-shrink-0 transition-transform duration-150 group-hover:scale-110" />
+                        <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none whitespace-nowrap z-50">
+                          {item.name}
+                        </div>
                       </button>
                     )}
 
-                    {openMenus.includes(item.id) && isExpanded && (
-                      <div className="mt-2 ml-8 space-y-1">
+                    {openMenus.includes(item.id) && shouldBeExpanded && (
+                      <div className="mt-1 space-y-0.5">
                         {item.submenu.map((sub) => (
                           sub.href ? (
                             <Link
                               key={sub.id}
                               href={sub.href}
-                              className={`flex items-center justify-between px-3 py-2.5 text-sm rounded-lg transition-all duration-200 ${
+                              onClick={() => isMobile && setIsExpanded(false)}
+                              className={`group flex items-center justify-between pl-11 pr-3 py-2 text-sm rounded-md transition-all duration-150 ${
                                 pathname === sub.href
-                                  ? 'bg-blue-500 text-white font-medium'
-                                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                                  ? 'bg-gray-900 text-white font-medium'
+                                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 hover:translate-x-0.5'
                               }`}
                             >
                               <div className="flex items-center gap-3">
-                                <sub.icon className="w-4 h-4" />
+                                <sub.icon className="w-4 h-4 transition-transform duration-150 group-hover:scale-110" />
                                 <span className="truncate">{sub.name}</span>
                               </div>
                               {(() => {
@@ -406,7 +427,7 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
                                 }
 
                                 return badgeCount > 0 ? (
-                                  <span className="px-2 py-0.5 text-xs font-bold bg-red-500 text-white rounded-full animate-pulse min-w-[20px] text-center">
+                                  <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-red-500 text-white rounded-full min-w-[18px] text-center">
                                     {badgeCount > 9 ? '9+' : badgeCount}
                                   </span>
                                 ) : null;
@@ -418,34 +439,38 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
                     )}
                   </div>
                 ) : item.href ? (
-                  isExpanded ? (
-                    <Link
-                      href={item.href}
-                      className={`flex items-center justify-between px-3 py-3 rounded-xl transition-all duration-200 ${
-                        pathname === item.href
-                          ? 'bg-blue-500 text-white font-medium border border-blue-600'
-                          : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <item.icon className="w-5 h-5 flex-shrink-0" />
-                        <span className="text-sm font-medium truncate">{item.name}</span>
-                      </div>
-                      {(() => {
-                        const badgeCount = badgeCounts[item.id] || 0;
-                        return badgeCount > 0 ? (
-                          <span className="px-2 py-0.5 text-xs font-bold bg-red-500 text-white rounded-full animate-pulse min-w-[20px] text-center">
-                            {badgeCount > 9 ? '9+' : badgeCount}
-                          </span>
-                        ) : null;
-                      })()}
-                    </Link>
+                  shouldBeExpanded ? (
+                  <Link
+                    href={item.href}
+                    onClick={() => isMobile && setIsExpanded(false)}
+                    className={`group flex items-center justify-between px-3 py-2 rounded-md transition-all duration-150 ${
+                      pathname === item.href
+                        ? 'bg-gray-900 text-white font-medium'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <item.icon className="w-4 h-4 flex-shrink-0 transition-transform duration-150 group-hover:scale-110" />
+                      <span className="text-sm font-normal truncate">{item.name}</span>
+                    </div>
+                    {(() => {
+                      const badgeCount = badgeCounts[item.id] || 0;
+                      return badgeCount > 0 ? (
+                        <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-red-500 text-white rounded-full min-w-[18px] text-center">
+                          {badgeCount > 9 ? '9+' : badgeCount}
+                        </span>
+                      ) : null;
+                    })()}
+                  </Link>
                   ) : (
                     <Link
                       href={item.href}
-                      className="flex items-center justify-center px-3 py-3 rounded-xl text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all duration-200"
+                      className="group flex items-center justify-center px-3 py-2 rounded-md text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all duration-150 relative"
                     >
-                      <item.icon className="w-5 h-5 flex-shrink-0" />
+                      <item.icon className="w-4 h-4 flex-shrink-0 transition-transform duration-150 group-hover:scale-110" />
+                      <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none whitespace-nowrap z-50">
+                        {item.name}
+                      </div>
                     </Link>
                   )
                 ) : null}
@@ -456,18 +481,18 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
 
         {/* Notifications Section */}
         <div className="px-3 mb-4">
-          {isExpanded ? (
+          {shouldBeExpanded ? (
             <>
               <button
                 onClick={() => setShowNotifications(!showNotifications)}
-                className="w-full flex items-center justify-between px-3 py-3 rounded-xl text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all duration-200"
+                className="group w-full flex items-center justify-between px-3 py-2 rounded-md text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all duration-150"
               >
                 <div className="flex items-center gap-3">
-                  <Bell className="w-5 h-5" />
-                  <span className="text-sm font-medium">Notifications</span>
+                  <Bell className="w-4 h-4 transition-transform duration-150 group-hover:scale-110" />
+                  <span className="text-sm font-normal">Notifications</span>
                 </div>
                 {unreadCount > 0 && (
-                  <span className="px-2 py-0.5 text-xs font-bold bg-red-500 text-white rounded-full animate-pulse min-w-[20px] text-center">
+                  <span className="px-1.5 py-0.5 text-[10px] font-semibold bg-red-500 text-white rounded-full min-w-[18px] text-center">
                     {unreadCount > 9 ? '9+' : unreadCount}
                   </span>
                 )}
@@ -517,20 +542,23 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
             </>
           ) : (
             <button
-              onClick={() => setIsExpanded(true)}
-              className="w-full flex items-center justify-center px-3 py-3 rounded-xl text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all duration-200 relative"
+              onClick={() => isMobile && setIsExpanded(true)}
+              className="group w-full flex items-center justify-center px-3 py-2 rounded-md text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all duration-150 relative"
             >
-              <Bell className="w-5 h-5" />
+              <Bell className="w-4 h-4 transition-transform duration-150 group-hover:scale-110" />
               {unreadCount > 0 && (
-                <span className="absolute top-1 right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
+                <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
               )}
+              <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none whitespace-nowrap z-50">
+                Notifications
+              </div>
             </button>
           )}
         </div>
 
         {/* User Profile Section */}
         <div className="p-4 border-t border-gray-100">
-          {isExpanded ? (
+          {shouldBeExpanded ? (
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
@@ -538,7 +566,6 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-gray-900">{user.name}</p>
-                  <p className="text-xs text-gray-500">{user.email}</p>
                 </div>
               </div>
               <button
@@ -563,8 +590,8 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
         </div>
       </aside>
 
-      {/* Backdrop blur overlay when sidebar is expanded */}
-      {isExpanded && (
+      {/* Backdrop blur overlay when sidebar is expanded on mobile */}
+      {isMobile && isExpanded && (
         <div
           className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
           onClick={() => setIsExpanded(false)}

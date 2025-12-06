@@ -51,16 +51,20 @@ export default function ProduksiPage() {
 
   const handleDelete = async (produksiId: number) => {
     if (!confirm('Apakah Anda yakin ingin menghapus data ini?')) return;
+
     try {
       const res = await fetch(`/api/gudang/produksi/${produksiId}`, { method: 'DELETE' });
+      const json = await res.json();
+
       if (res.ok) {
         alert('Data berhasil dihapus');
         fetchProduksis();
       } else {
-        alert('Gagal menghapus data');
+        alert(`Gagal menghapus data: ${json.error || 'Unknown error'}`);
       }
     } catch (error) {
-      console.error('Error deleting:', error);
+      console.warn('Error deleting production:', error);
+      alert('Terjadi kesalahan saat menghapus data');
     }
   };
 

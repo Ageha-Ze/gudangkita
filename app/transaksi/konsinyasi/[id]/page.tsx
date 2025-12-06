@@ -83,6 +83,7 @@ export default function DetailKonsinyasiPage() {
     tanggal_retur: new Date().toISOString().split('T')[0],
     jumlah_retur: '',
     kondisi: 'Baik',
+    jenis_retur: 'Normal', // Normal, Hilang, Rusak, Gratis
     keterangan: '',
   });
 
@@ -157,6 +158,7 @@ export default function DetailKonsinyasiPage() {
       tanggal_retur: new Date().toISOString().split('T')[0],
       jumlah_retur: '',
       kondisi: 'Baik',
+      jenis_retur: 'Normal',
       keterangan: '',
     });
     setActiveModal('retur');
@@ -307,6 +309,7 @@ export default function DetailKonsinyasiPage() {
           tanggal_retur: returForm.tanggal_retur,
           jumlah_retur: jumlah,
           kondisi: returForm.kondisi,
+          jenis_retur: returForm.jenis_retur,
           keterangan: returForm.keterangan,
         }),
       });
@@ -556,17 +559,19 @@ if (loading) {
                   <td className="px-4 py-3 text-right border border-indigo-200 font-semibold">
                     Rp {(detail.jumlah_terjual * detail.harga_konsinyasi).toLocaleString('id-ID')}
                   </td>
-                  {data.status === 'Aktif' && (
+                  {(data.status === 'Aktif' || data.status === 'Selesai') && (
                     <td className="px-4 py-3 border border-indigo-200">
                       <div className="flex justify-center gap-2">
-                        <button
-                          onClick={() => handleOpenPenjualan(detail)}
-                          disabled={detail.jumlah_sisa <= 0}
-                          className="text-green-600 hover:text-green-800 transition disabled:opacity-50"
-                          title="Input Penjualan"
-                        >
-                          <ShoppingCart size={18} />
-                        </button>
+                        {data.status === 'Aktif' && (
+                          <button
+                            onClick={() => handleOpenPenjualan(detail)}
+                            disabled={detail.jumlah_sisa <= 0}
+                            className="text-green-600 hover:text-green-800 transition disabled:opacity-50"
+                            title="Input Penjualan"
+                          >
+                            <ShoppingCart size={18} />
+                          </button>
+                        )}
                         <button
                           onClick={() => handleOpenRetur(detail)}
                           disabled={detail.jumlah_sisa <= 0}
@@ -875,6 +880,19 @@ if (loading) {
                 >
                   <option value="Baik">Baik</option>
                   <option value="Rusak">Rusak</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-gray-700 font-medium mb-2">Jenis Retur</label>
+                <select
+                  value={returForm.jenis_retur}
+                  onChange={(e) => setReturForm({ ...returForm, jenis_retur: e.target.value })}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500"
+                >
+                  <option value="Normal">Normal</option>
+                  <option value="Hilang">Hilang</option>
+                  <option value="Rusak">Rusak</option>
+                  <option value="Gratis">Gratis</option>
                 </select>
               </div>
               <div>

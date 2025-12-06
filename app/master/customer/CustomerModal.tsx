@@ -242,14 +242,17 @@ export default function CustomerModal({
               No HP
             </label>
             <input
-              type="text"
+              type="tel"
+              inputMode="numeric"
               value={formData.no_hp}
-              onChange={(e) =>
-                setFormData({ ...formData, no_hp: e.target.value })
-              }
+              onChange={(e) => {
+                const value = e.target.value.replace(/[^0-9]/g, '');
+                setFormData({ ...formData, no_hp: value });
+              }}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               disabled={isLoading}
               placeholder="Contoh: 081234567890"
+              maxLength={15}
             />
           </div>
 
