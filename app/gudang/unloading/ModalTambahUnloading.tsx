@@ -178,6 +178,31 @@ export default function ModalTambahUnloading({
     }
   };
 
+  // ✅ SPECIAL: Filtered kiloan products (includes PCS if jerigen has Ml satuan)
+  const updateProdukKiloanFiltered = (jerigenSatuan: string) => {
+    try {
+      // Fetch products and filter based on jerigen satuan
+      fetch('/api/master/produk?limit=1000')
+        .then(res => res.json())
+        .then(json => {
+          const allProducts = json.data || [];
+
+          setProdukKiloanList(allProducts.filter((p: Produk) => {
+            const isJerigen = p.is_jerigen === false;
+            // ✅ INCLUDE PCS ONLY if jerigen satuan is 'Ml'
+            const isPcsIncluded = jerigenSatuan.toLowerCase() === 'ml' ?
+              true : p.satuan?.toLowerCase() !== 'pcs';
+            return isJerigen && isPcsIncluded;
+          }));
+        })
+        .catch(error => {
+          console.error('Error fetching filtered produk kiloan:', error);
+        });
+    } catch (error) {
+      console.error('Error updating produk kiloan:', error);
+    }
+  };
+
   // 🆕 Calculate conversion preview
   const getConversionPreview = () => {
     if (!currentItem.produk_jerigen_id || !currentItem.produk_kiloan_id || !currentItem.jumlah) {
@@ -200,7 +225,7 @@ export default function ModalTambahUnloading({
           type: 'error'
         };
       }
-      
+
       const output = (jumlahInput / produkJerigen.density_kg_per_liter) * 1000;
       return {
         type: 'KG_TO_ML',
@@ -221,7 +246,7 @@ export default function ModalTambahUnloading({
           type: 'error'
         };
       }
-      
+
       const output = (jumlahInput / 1000) * produkJerigen.density_kg_per_liter;
       return {
         type: 'ML_TO_KG',
@@ -541,7 +566,30 @@ export default function ModalTambahUnloading({
                     ) : (
                       <select
                         value={currentItem.produk_jerigen_id}
-                        onChange={(e) => setCurrentItem({ ...currentItem, produk_jerigen_id: e.target.value })}
+                        onChange={(e) => {
+                          const jerigenId = e.target.value;
+                          const jerigenSatuan = jerigenId ?
+                            produkJerigenList.find(p => p.produk_id === parseInt(jerigenId))?.satuan || '' :
+                            '';
+
+                          setCurrentItem({
+                            ...currentItem,
+                            produk_jerigen_id: jerigenId,
+                            // Clear kiloan selection if jerigen satuan doesn't support current kiloan
+                            produk_kiloan_id: jerigenSatuan.toLowerCase() !== 'ml' &&
+                                            produkKiloanList.find(k => k.id.toString() === currentItem.produk_kiloan_id)?.satuan?.toLowerCase() === 'pcs' ?
+                                            '' : currentItem.produk_kiloan_id
+                          });
+
+                          // ✅ UPDATE kiloan products based on jerigen satuan
+                          // If jerigen has 'Ml' satuan, include PCS products in kiloan list
+                          if (jerigenSatuan.toLowerCase() === 'ml') {
+                            updateProdukKiloanFiltered('Ml');
+                          } else if (jerigenId) {
+                            // Reset to exclude PCS
+                            updateProdukKiloanFiltered('');
+                          }
+                        }}
                         className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                         disabled={loadingProduk}
                       >
@@ -551,20 +599,26 @@ export default function ModalTambahUnloading({
                         )}
                         {produkJerigenList.map((produk) => {
                           const remaining = getRemainingStock(produk.produk_id);
+                          const hasMlBadge = produk.satuan.toLowerCase() === 'ml';
                           return (
-                            <option 
-                              key={produk.produk_id} 
+                            <option
+                              key={produk.produk_id}
                               value={produk.produk_id}
                               disabled={remaining <= 0}
                             >
                               {produk.nama_produk} - {produk.cabang} (Stock: {remaining.toFixed(2)} / {produk.stock.toFixed(2)} {produk.satuan})
                               {produk.density_kg_per_liter && ` [ρ=${produk.density_kg_per_liter}]`}
+                              {hasMlBadge && ' 🏷️ ML (can fill PCS)'}
                             </option>
                           );
                         })}
                       </select>
                     )}
-                    <p className="text-xs text-gray-500 mt-1">⬇️ Stock akan berkurang (hanya tampil stock cabang terpilih)</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      ⬇️ Stock akan berkurang (hanya tampil stock cabang terpilih)
+                      {produkJerigenList.find(p => p.produk_id === parseInt(currentItem.produk_jerigen_id))?.satuan?.toLowerCase() === 'ml' &&
+                       ' | 🏷️ Ini produk ML - PCS dapat dipilih sebagai tujuan'}
+                    </p>
                   </div>
 
                   <div>
