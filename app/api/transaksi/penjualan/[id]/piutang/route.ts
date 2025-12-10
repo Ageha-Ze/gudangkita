@@ -1,12 +1,12 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 // GET - List semua piutang
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { searchParams } = new URL(request.url);
     const cabangId = searchParams.get('cabang_id');
     const status = searchParams.get('status');
@@ -143,7 +143,7 @@ export async function GET(request: NextRequest) {
 // POST - Summary piutang
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const body = await request.json();
     const { action, cabangId } = body;
 

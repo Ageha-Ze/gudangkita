@@ -1,6 +1,6 @@
 'use server';
 
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import { revalidatePath } from 'next/cache';
 
 type ActionResult = {
@@ -12,7 +12,7 @@ type ActionResult = {
 
 export async function getSuplier(): Promise<any[]> {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     const { data, error } = await supabase
       .from('suplier')
@@ -39,7 +39,7 @@ export async function getSuplier(): Promise<any[]> {
 
 export async function getCabangList(): Promise<Array<{ id: number; nama_cabang: string }>> {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     const { data, error } = await supabase
       .from('cabang')
@@ -71,7 +71,7 @@ export async function addSuplier(formData: {
   tanggal_order_terakhir: string;
 }): Promise<ActionResult> {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     // Validasi input
     if (!formData.nama || !formData.cabang_id) {
@@ -129,7 +129,7 @@ export async function updateSuplier(
   }
 ): Promise<ActionResult> {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     // Validasi input
     if (!formData.nama || !formData.cabang_id) {
@@ -174,7 +174,7 @@ export async function updateSuplier(
 
 export async function deleteSuplier(id: number): Promise<ActionResult> {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     // Cek apakah suplier digunakan di transaksi pembelian
     const { data: pembelianData } = await supabase

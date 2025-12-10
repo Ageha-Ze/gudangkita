@@ -1,13 +1,11 @@
 // app/api/master/suplier/route.ts
-'use server';
-
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer'; // ✅ Import yang benar
 import { NextRequest, NextResponse } from 'next/server';
 
 // GET - List all suplier
 export async function GET(request: NextRequest) {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search') || '';
     const page = parseInt(searchParams.get('page') || '1');
@@ -61,7 +59,7 @@ export async function GET(request: NextRequest) {
 // POST - Create new suplier
 export async function POST(request: NextRequest) {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const body = await request.json();
 
     const { data, error } = await supabase

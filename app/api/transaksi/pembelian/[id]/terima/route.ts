@@ -2,7 +2,7 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 export async function POST(
   request: NextRequest,
@@ -10,7 +10,7 @@ export async function POST(
 ) {
   try {
     const { id: pembelian_id } = await context.params;
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
 
     console.log('📦 Processing terima barang for pembelian:', pembelian_id);
 
@@ -200,6 +200,7 @@ export async function POST(
           .from('stock_barang')
           .insert({
             produk_id: update.produk_id,
+            pembelian_id: parseInt(pembelian_id),
             cabang_id: cabangId,
             jumlah: update.jumlah_masuk,
             tanggal: pembelian.tanggal,
@@ -294,7 +295,7 @@ export async function POST(
     // Attempt rollback
     try {
       const { id: pembelian_id } = await context.params;
-      const supabase = await supabaseServer();
+      const supabase = await supabaseAuthenticated();
       
       await supabase
         .from('transaksi_pembelian')

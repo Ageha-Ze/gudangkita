@@ -1,12 +1,12 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 // GET - Stock Summary dengan FIFO
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { searchParams } = new URL(request.url);
     
     const cabangId = searchParams.get('cabang_id');

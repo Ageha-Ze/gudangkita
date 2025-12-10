@@ -1,11 +1,11 @@
 // app/api/transaksi/konsinyasi/toko/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 // GET - List toko konsinyasi
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { searchParams } = new URL(request.url);
     
     const search = searchParams.get('search') || '';
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
 // POST - Create toko konsinyasi
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const body = await request.json();
 
     // Validasi
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
 // PUT - Update toko konsinyasi
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const body = await request.json();
     const { id, ...updateData } = body;
 
@@ -176,7 +176,7 @@ export async function PUT(request: NextRequest) {
 // DELETE - Delete toko konsinyasi
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 

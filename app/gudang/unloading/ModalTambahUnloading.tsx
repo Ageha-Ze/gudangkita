@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Plus, Trash2 } from 'lucide-react';
+import { X, Plus, Trash2, AlertCircle, Droplets, ArrowRight } from 'lucide-react';
 
 interface ModalTambahUnloadingProps {
   isOpen: boolean;
@@ -21,6 +21,18 @@ interface Produk {
   satuan: string;
   stok: number;
   is_jerigen: boolean;
+  density_kg_per_liter?: number; // 🆕
+}
+
+interface ProdukWithBranchStock {
+  produk_id: number;
+  nama_produk: string;
+  kode_produk: string;
+  satuan: string;
+  stock: number;
+  cabang_id: number;
+  cabang: string;
+  density_kg_per_liter?: number; // 🆕
 }
 
 interface DetailItem {
@@ -28,8 +40,12 @@ interface DetailItem {
   nama_jerigen: string;
   produk_kiloan_id: number;
   nama_kiloan: string;
-  jumlah: number;
-  satuan: string;
+  jumlah: number; // Input amount
+  jumlah_output?: number; // 🆕 Calculated output (after conversion)
+  satuan_input: string; // 🆕
+  satuan_output: string; // 🆕
+  density?: number; // 🆕
+  conversion_type?: string | null; // 🆕 Fixed: Now accepts null
   stok_jerigen: number;
   keterangan: string;
 }
@@ -46,10 +62,11 @@ export default function ModalTambahUnloading({
   });
 
   const [cabangList, setCabangList] = useState<Cabang[]>([]);
-  const [produkJerigenList, setProdukJerigenList] = useState<Produk[]>([]);
+  const [produkJerigenList, setProdukJerigenList] = useState<ProdukWithBranchStock[]>([]);
   const [produkKiloanList, setProdukKiloanList] = useState<Produk[]>([]);
   const [detailItems, setDetailItems] = useState<DetailItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingProduk, setLoadingProduk] = useState(false);
 
   const [currentItem, setCurrentItem] = useState({
     produk_jerigen_id: '',
@@ -61,13 +78,14 @@ export default function ModalTambahUnloading({
   useEffect(() => {
     if (isOpen) {
       fetchCabang();
-      fetchProduk();
+      fetchProdukKiloan();
       setFormData({
         tanggal: new Date().toISOString().split('T')[0],
         cabang_id: '',
         keterangan: '',
       });
       setDetailItems([]);
+      setProdukJerigenList([]);
       setCurrentItem({ 
         produk_jerigen_id: '', 
         produk_kiloan_id: '', 
@@ -76,6 +94,14 @@ export default function ModalTambahUnloading({
       });
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (formData.cabang_id) {
+      fetchProdukJerigenByCabang(parseInt(formData.cabang_id));
+    } else {
+      setProdukJerigenList([]);
+    }
+  }, [formData.cabang_id]);
 
   const fetchCabang = async () => {
     try {
@@ -87,31 +113,149 @@ export default function ModalTambahUnloading({
     }
   };
 
-  const fetchProduk = async () => {
+  const fetchProdukJerigenByCabang = async (cabangId: number) => {
+    setLoadingProduk(true);
     try {
       const res = await fetch('/api/master/produk?limit=1000');
       const json = await res.json();
       const allProducts = json.data || [];
       
-      setProdukJerigenList(allProducts.filter((p: Produk) => 
-        p.is_jerigen === true && p.stok > 0
-      ));
+      const jerigenProducts = allProducts.filter((p: Produk) => p.is_jerigen === true);
+
+      const jerigenWithBranchStock: ProdukWithBranchStock[] = [];
       
-      setProdukKiloanList(allProducts.filter((p: Produk) =>
-        p.is_jerigen === false
-      ));
+      for (const produk of jerigenProducts) {
+        try {
+          const stockRes = await fetch(
+            `/api/persediaan/stock-barang/stock-lookup?produk_id=${produk.id}&cabang_id=${cabangId}`
+          );
+          
+          if (stockRes.ok) {
+            const stockData = await stockRes.json();
+            
+            if (stockData.success && stockData.data && stockData.data.stock > 0) {
+              jerigenWithBranchStock.push({
+                produk_id: stockData.data.produk_id,
+                nama_produk: stockData.data.nama_produk,
+                kode_produk: stockData.data.kode_produk,
+                satuan: stockData.data.satuan,
+                stock: parseFloat(stockData.data.stock.toString()),
+                cabang_id: stockData.data.cabang_id,
+                cabang: stockData.data.cabang,
+                density_kg_per_liter: produk.density_kg_per_liter, // 🆕
+              });
+            }
+          }
+        } catch (error) {
+          console.error(`Error fetching stock for produk ${produk.id}:`, error);
+        }
+      }
+
+      setProdukJerigenList(jerigenWithBranchStock);
+      console.log(`✅ Loaded ${jerigenWithBranchStock.length} jerigen products with stock in cabang ${cabangId}`);
+      
     } catch (error) {
-      console.error('Error fetching produk:', error);
+      console.error('Error fetching produk jerigen:', error);
+      setProdukJerigenList([]);
+    } finally {
+      setLoadingProduk(false);
     }
   };
 
+  const fetchProdukKiloan = async () => {
+    try {
+      const res = await fetch('/api/master/produk?limit=1000');
+      const json = await res.json();
+      const allProducts = json.data || [];
+
+      setProdukKiloanList(allProducts.filter((p: Produk) => {
+        const isJerigen = p.is_jerigen === false;
+        const isPcsExcluded = p.satuan?.toLowerCase() !== 'pcs';
+        return isJerigen && isPcsExcluded;
+      }));
+    } catch (error) {
+      console.error('Error fetching produk kiloan:', error);
+    }
+  };
+
+  // 🆕 Calculate conversion preview
+  const getConversionPreview = () => {
+    if (!currentItem.produk_jerigen_id || !currentItem.produk_kiloan_id || !currentItem.jumlah) {
+      return null;
+    }
+
+    const produkJerigen = produkJerigenList.find(p => p.produk_id === parseInt(currentItem.produk_jerigen_id));
+    const produkKiloan = produkKiloanList.find(p => p.id === parseInt(currentItem.produk_kiloan_id));
+
+    if (!produkJerigen || !produkKiloan) return null;
+
+    const jumlahInput = parseFloat(currentItem.jumlah);
+    if (isNaN(jumlahInput) || jumlahInput <= 0) return null;
+
+    // KG → ML conversion
+    if (produkJerigen.satuan === 'Kg' && produkKiloan.satuan === 'Ml') {
+      if (!produkJerigen.density_kg_per_liter || produkJerigen.density_kg_per_liter <= 0) {
+        return {
+          error: `Produk "${produkJerigen.nama_produk}" belum memiliki density factor!`,
+          type: 'error'
+        };
+      }
+      
+      const output = (jumlahInput / produkJerigen.density_kg_per_liter) * 1000;
+      return {
+        type: 'KG_TO_ML',
+        input: jumlahInput,
+        output: output,
+        inputUnit: 'KG',
+        outputUnit: 'ML',
+        density: produkJerigen.density_kg_per_liter,
+        formula: `${jumlahInput} KG ÷ ${produkJerigen.density_kg_per_liter} × 1000 = ${output.toFixed(2)} ML`
+      };
+    }
+
+    // ML → KG conversion (rare)
+    if (produkJerigen.satuan === 'Ml' && produkKiloan.satuan === 'Kg') {
+      if (!produkJerigen.density_kg_per_liter || produkJerigen.density_kg_per_liter <= 0) {
+        return {
+          error: `Produk "${produkJerigen.nama_produk}" belum memiliki density factor!`,
+          type: 'error'
+        };
+      }
+      
+      const output = (jumlahInput / 1000) * produkJerigen.density_kg_per_liter;
+      return {
+        type: 'ML_TO_KG',
+        input: jumlahInput,
+        output: output,
+        inputUnit: 'ML',
+        outputUnit: 'KG',
+        density: produkJerigen.density_kg_per_liter,
+        formula: `${jumlahInput} ML ÷ 1000 × ${produkJerigen.density_kg_per_liter} = ${output.toFixed(2)} KG`
+      };
+    }
+
+    // Same unit, no conversion
+    return {
+      type: 'SAME_UNIT',
+      input: jumlahInput,
+      output: jumlahInput,
+      inputUnit: produkJerigen.satuan,
+      outputUnit: produkKiloan.satuan
+    };
+  };
+
   const handleAddItem = () => {
+    if (!formData.cabang_id) {
+      alert('❌ Pilih cabang terlebih dahulu!');
+      return;
+    }
+
     if (!currentItem.produk_jerigen_id || !currentItem.produk_kiloan_id || !currentItem.jumlah) {
       alert('Produk jerigen, produk kiloan, dan jumlah wajib diisi');
       return;
     }
 
-    const produkJerigen = produkJerigenList.find(p => p.id === parseInt(currentItem.produk_jerigen_id));
+    const produkJerigen = produkJerigenList.find(p => p.produk_id === parseInt(currentItem.produk_jerigen_id));
     const produkKiloan = produkKiloanList.find(p => p.id === parseInt(currentItem.produk_kiloan_id));
     
     if (!produkJerigen || !produkKiloan) {
@@ -119,18 +263,24 @@ export default function ModalTambahUnloading({
       return;
     }
 
-    const jumlah = parseFloat(currentItem.jumlah);
+    const jumlahInput = parseFloat(currentItem.jumlah);
 
-    if (jumlah <= 0) {
+    if (jumlahInput <= 0) {
       alert('Jumlah harus lebih dari 0');
       return;
     }
 
-    if (jumlah > produkJerigen.stok) {
-      alert(`Stock ${produkJerigen.nama_produk} tidak mencukupi! Stock tersedia: ${produkJerigen.stok} ${produkJerigen.satuan}`);
+    // Validate stock
+    if (jumlahInput > produkJerigen.stock) {
+      alert(
+        `❌ Stock ${produkJerigen.nama_produk} di cabang ${produkJerigen.cabang} tidak mencukupi!\n\n` +
+        `Stock tersedia: ${produkJerigen.stock} ${produkJerigen.satuan}\n` +
+        `Diminta: ${jumlahInput} ${produkJerigen.satuan}`
+      );
       return;
     }
 
+    // Check duplicate
     if (detailItems.some(item => 
       item.produk_jerigen_id === parseInt(currentItem.produk_jerigen_id) &&
       item.produk_kiloan_id === parseInt(currentItem.produk_kiloan_id)
@@ -139,14 +289,66 @@ export default function ModalTambahUnloading({
       return;
     }
 
+    // Calculate remaining stock
+    const usedStock = detailItems
+      .filter(item => item.produk_jerigen_id === parseInt(currentItem.produk_jerigen_id))
+      .reduce((sum, item) => sum + item.jumlah, 0);
+    
+    const remainingStock = produkJerigen.stock - usedStock;
+
+    if (jumlahInput > remainingStock) {
+      alert(
+        `❌ Stock tidak mencukupi!\n\n` +
+        `Stock ${produkJerigen.nama_produk}: ${produkJerigen.stock} ${produkJerigen.satuan}\n` +
+        `Sudah digunakan: ${usedStock} ${produkJerigen.satuan}\n` +
+        `Sisa: ${remainingStock} ${produkJerigen.satuan}\n` +
+        `Diminta: ${jumlahInput} ${produkJerigen.satuan}`
+      );
+      return;
+    }
+
+    // 🆕 Calculate output based on conversion
+    let jumlahOutput = jumlahInput;
+    let satuanOutput = produkKiloan.satuan;
+    let density = undefined;
+    let conversionType = null;
+
+    if (produkJerigen.satuan === 'Kg' && produkKiloan.satuan === 'Ml') {
+      // KG → ML conversion
+      if (!produkJerigen.density_kg_per_liter || produkJerigen.density_kg_per_liter <= 0) {
+        alert(`❌ Produk "${produkJerigen.nama_produk}" belum memiliki density factor!\n\nSilakan update di Master Produk terlebih dahulu.`);
+        return;
+      }
+      density = produkJerigen.density_kg_per_liter;
+      jumlahOutput = (jumlahInput / density) * 1000;
+      conversionType = 'KG_TO_ML';
+      
+      console.log(`🔄 Conversion Preview: ${jumlahInput} KG (density ${density}) → ${jumlahOutput.toFixed(2)} ML`);
+    } else if (produkJerigen.satuan === 'Ml' && produkKiloan.satuan === 'Kg') {
+      // ML → KG conversion
+      if (!produkJerigen.density_kg_per_liter || produkJerigen.density_kg_per_liter <= 0) {
+        alert(`❌ Produk "${produkJerigen.nama_produk}" belum memiliki density factor untuk konversi ML→KG!`);
+        return;
+      }
+      density = produkJerigen.density_kg_per_liter;
+      jumlahOutput = (jumlahInput / 1000) * density;
+      conversionType = 'ML_TO_KG';
+      
+      console.log(`🔄 Conversion Preview: ${jumlahInput} ML → ${jumlahOutput.toFixed(2)} KG (density ${density})`);
+    }
+
     const newItem: DetailItem = {
       produk_jerigen_id: parseInt(currentItem.produk_jerigen_id),
       nama_jerigen: produkJerigen.nama_produk,
       produk_kiloan_id: parseInt(currentItem.produk_kiloan_id),
       nama_kiloan: produkKiloan.nama_produk,
-      jumlah: jumlah,
-      satuan: produkJerigen.satuan,
-      stok_jerigen: produkJerigen.stok,
+      jumlah: jumlahInput,
+      jumlah_output: jumlahOutput, // 🆕
+      satuan_input: produkJerigen.satuan, // 🆕
+      satuan_output: satuanOutput, // 🆕
+      density: density, // 🆕
+      conversion_type: conversionType, // 🆕
+      stok_jerigen: produkJerigen.stock,
       keterangan: currentItem.keterangan,
     };
 
@@ -195,7 +397,7 @@ export default function ModalTambahUnloading({
       const json = await res.json();
 
       if (res.ok) {
-        alert('✅ Unloading berhasil! Stock jerigen berkurang, stock kiloan bertambah.');
+        alert(json.message || '✅ Unloading berhasil!');
         onSuccess();
         onClose();
       } else {
@@ -213,6 +415,20 @@ export default function ModalTambahUnloading({
     return detailItems.reduce((sum, item) => sum + item.jumlah, 0);
   };
 
+  const getRemainingStock = (produkJerigenId: number): number => {
+    const produk = produkJerigenList.find(p => p.produk_id === produkJerigenId);
+    if (!produk) return 0;
+
+    const usedStock = detailItems
+      .filter(item => item.produk_jerigen_id === produkJerigenId)
+      .reduce((sum, item) => sum + item.jumlah, 0);
+
+    return produk.stock - usedStock;
+  };
+
+  // 🆕 Get conversion preview component
+  const conversionPreview = getConversionPreview();
+
   if (!isOpen) return null;
 
   return (
@@ -222,7 +438,7 @@ export default function ModalTambahUnloading({
         <div className="sticky top-0 bg-white border-b px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center z-10">
           <div>
             <h2 className="text-lg sm:text-xl font-bold">Tambah Unloading Barang</h2>
-            <p className="text-xs sm:text-sm text-gray-500">Tuang madu dari jerigen ke kiloan/eceran</p>
+            <p className="text-xs sm:text-sm text-gray-500">Tuang madu dari jerigen ke kiloan/eceran (support konversi KG→ML)</p>
           </div>
           <button onClick={onClose} className="text-gray-600 hover:text-gray-800 p-1">
             <X size={20} className="sm:w-6 sm:h-6" />
@@ -231,6 +447,29 @@ export default function ModalTambahUnloading({
 
         {/* Content */}
         <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+          {/* INFO BOX */}
+          {formData.cabang_id && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
+              <div className="flex items-start gap-2">
+                <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h4 className="font-semibold text-blue-900 text-sm mb-1">
+                    Info Multi-Branch Unloading
+                  </h4>
+                  <p className="text-xs text-blue-800">
+                    Stock jerigen akan <strong>berkurang</strong> dan stock kiloan akan <strong>bertambah</strong> di cabang:{' '}
+                    <span className="font-bold">
+                      {cabangList.find(c => c.id.toString() === formData.cabang_id)?.nama_cabang}
+                    </span>
+                  </p>
+                  <p className="text-xs text-blue-700 mt-1">
+                    ⚠️ Pastikan cabang sudah benar sebelum menyimpan!
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Form Utama */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
             <div>
@@ -252,7 +491,16 @@ export default function ModalTambahUnloading({
               </label>
               <select
                 value={formData.cabang_id}
-                onChange={(e) => setFormData({ ...formData, cabang_id: e.target.value })}
+                onChange={(e) => {
+                  setFormData({ ...formData, cabang_id: e.target.value });
+                  setDetailItems([]);
+                  setCurrentItem({ 
+                    produk_jerigen_id: '', 
+                    produk_kiloan_id: '', 
+                    jumlah: '', 
+                    keterangan: '' 
+                  });
+                }}
                 className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 required
               >
@@ -263,94 +511,169 @@ export default function ModalTambahUnloading({
                   </option>
                 ))}
               </select>
+              {!formData.cabang_id && (
+                <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                  <AlertCircle size={12} />
+                  Pilih cabang dulu untuk melihat stock jerigen
+                </p>
+              )}
             </div>
           </div>
 
           {/* Tambah Unloading */}
-          <div className="border-t pt-4">
-            <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
-              <span className="bg-indigo-100 text-indigo-800 px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm">
-                Tambah Item Unloading
-              </span>
-            </h3>
-            <div className="bg-gray-50 p-3 sm:p-4 rounded-lg space-y-3">
-              <div className="grid grid-cols-1 gap-3">
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Produk Jerigen (Sumber) <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={currentItem.produk_jerigen_id}
-                    onChange={(e) => setCurrentItem({ ...currentItem, produk_jerigen_id: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="">-- Pilih Produk Jerigen --</option>
-                    {produkJerigenList.map((produk) => (
-                      <option key={produk.id} value={produk.id}>
-                        {produk.nama_produk} (Stock: {produk.stok} {produk.satuan})
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">⬇️ Stock akan berkurang</p>
+          {formData.cabang_id && (
+            <div className="border-t pt-4">
+              <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2">
+                <span className="bg-indigo-100 text-indigo-800 px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm">
+                  Tambah Item Unloading
+                </span>
+              </h3>
+              <div className="bg-gray-50 p-3 sm:p-4 rounded-lg space-y-3">
+                <div className="grid grid-cols-1 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      Produk Bundles (Sumber) <span className="text-red-500">*</span>
+                    </label>
+                    {loadingProduk ? (
+                      <div className="w-full px-3 py-2 text-sm border rounded-lg bg-gray-100 text-gray-500">
+                        Loading stock data...
+                      </div>
+                    ) : (
+                      <select
+                        value={currentItem.produk_jerigen_id}
+                        onChange={(e) => setCurrentItem({ ...currentItem, produk_jerigen_id: e.target.value })}
+                        className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        disabled={loadingProduk}
+                      >
+                        <option value="">-- Pilih Produk Jerigen --</option>
+                        {produkJerigenList.length === 0 && !loadingProduk && (
+                          <option disabled>Tidak ada stock jerigen di cabang ini</option>
+                        )}
+                        {produkJerigenList.map((produk) => {
+                          const remaining = getRemainingStock(produk.produk_id);
+                          return (
+                            <option 
+                              key={produk.produk_id} 
+                              value={produk.produk_id}
+                              disabled={remaining <= 0}
+                            >
+                              {produk.nama_produk} - {produk.cabang} (Stock: {remaining.toFixed(2)} / {produk.stock.toFixed(2)} {produk.satuan})
+                              {produk.density_kg_per_liter && ` [ρ=${produk.density_kg_per_liter}]`}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    )}
+                    <p className="text-xs text-gray-500 mt-1">⬇️ Stock akan berkurang (hanya tampil stock cabang terpilih)</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      Produk Kiloan/Eceran (Tujuan) <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={currentItem.produk_kiloan_id}
+                      onChange={(e) => setCurrentItem({ ...currentItem, produk_kiloan_id: e.target.value })}
+                      className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="">-- Pilih Produk Kiloan --</option>
+                      {produkKiloanList.map((produk) => (
+                        <option key={produk.id} value={produk.id}>
+                          {produk.nama_produk} ({produk.satuan})
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-indigo-600 mt-1 font-medium">
+                      ⬆️ Stock akan bertambah di: {cabangList.find(c => c.id.toString() === formData.cabang_id)?.nama_cabang || 'Pilih cabang dulu'}
+                    </p>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Produk Kiloan/Eceran (Tujuan) <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={currentItem.produk_kiloan_id}
-                    onChange={(e) => setCurrentItem({ ...currentItem, produk_kiloan_id: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="">-- Pilih Produk Kiloan --</option>
-                    {produkKiloanList.map((produk) => (
-                      <option key={produk.id} value={produk.id}>
-                        {produk.nama_produk} (Stock: {produk.stok} {produk.satuan})
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">⬆️ Stock akan bertambah</p>
+                {/* 🆕 CONVERSION PREVIEW */}
+                {conversionPreview && conversionPreview.type !== 'error' && conversionPreview.type !== 'SAME_UNIT' &&
+                 conversionPreview.input !== undefined && conversionPreview.output !== undefined && (
+                  <div className="bg-gradient-to-r from-cyan-50 to-blue-50 border-2 border-cyan-300 rounded-lg p-3">
+                    <div className="flex items-start gap-2">
+                      <Droplets className="w-5 h-5 text-cyan-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-sm font-bold text-cyan-900 mb-1">🔄 Konversi Otomatis</p>
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="font-semibold text-red-600">
+                            -{conversionPreview.input.toFixed(2)} {conversionPreview.inputUnit}
+                          </span>
+                          <ArrowRight className="w-4 h-4 text-cyan-600" />
+                          <span className="font-semibold text-green-600">
+                            +{conversionPreview.output.toFixed(2)} {conversionPreview.outputUnit}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-600 mt-1 font-mono">
+                          {conversionPreview.formula}
+                        </p>
+                        <p className="text-xs text-cyan-700 mt-1">
+                          Density: <strong>{conversionPreview.density} kg/L</strong>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ERROR: Missing density */}
+                {conversionPreview && conversionPreview.type === 'error' && (
+                  <div className="bg-red-50 border-2 border-red-300 rounded-lg p-3">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-red-900">❌ Density Belum Diset</p>
+                        <p className="text-xs text-red-700 mt-1">
+                          {conversionPreview.error}
+                        </p>
+                        <p className="text-xs text-red-600 mt-1">
+                          Silakan update density di <strong>Master Produk</strong> terlebih dahulu.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">
+                      Jumlah <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={currentItem.jumlah}
+                      onChange={(e) => setCurrentItem({ ...currentItem, jumlah: e.target.value })}
+                      className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="0"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium mb-1">Keterangan</label>
+                    <input
+                      type="text"
+                      value={currentItem.keterangan}
+                      onChange={(e) => setCurrentItem({ ...currentItem, keterangan: e.target.value })}
+                      className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      placeholder="Catatan (opsional)"
+                    />
+                  </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={handleAddItem}
+                  disabled={loadingProduk}
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Plus size={18} />
+                  Tambah ke List
+                </button>
               </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-sm font-medium mb-1">
-                    Jumlah <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={currentItem.jumlah}
-                    onChange={(e) => setCurrentItem({ ...currentItem, jumlah: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="0"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium mb-1">Keterangan</label>
-                  <input
-                    type="text"
-                    value={currentItem.keterangan}
-                    onChange={(e) => setCurrentItem({ ...currentItem, keterangan: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                    placeholder="Catatan (opsional)"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleAddItem}
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition"
-              >
-                <Plus size={18} />
-                Tambah ke List
-              </button>
             </div>
-          </div>
+          )}
 
           {/* List Items */}
           {detailItems.length > 0 && (
@@ -362,7 +685,7 @@ export default function ModalTambahUnloading({
               {/* Mobile View - Cards */}
               <div className="block sm:hidden space-y-3">
                 {detailItems.map((item, index) => (
-                  <div key={index} className="bg-white border border-indigo-200 rounded-lg p-3">
+                  <div key={index} className="bg-white border-2 border-indigo-200 rounded-lg p-3">
                     <div className="flex justify-between items-start mb-2">
                       <div className="flex-1">
                         <div className="text-sm font-medium text-gray-800">{item.nama_jerigen}</div>
@@ -376,25 +699,41 @@ export default function ModalTambahUnloading({
                         <Trash2 size={16} />
                       </button>
                     </div>
-                    <div className="text-center text-indigo-600 font-bold text-sm my-2">↓</div>
-                    <div className="text-sm font-medium text-gray-800 mb-2">{item.nama_kiloan}</div>
-                    <div className="flex justify-between items-center pt-2 border-t border-gray-200">
-                      <span className="text-xs text-gray-600">Jumlah:</span>
-                      <span className="text-sm font-semibold text-green-600">
-                        {item.jumlah.toFixed(2)} {item.satuan}
-                      </span>
+                    
+                    {/* Conversion display */}
+                    <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded p-2 mb-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-red-700 font-semibold">
+                          -{item.jumlah.toFixed(2)} {item.satuan_input}
+                        </span>
+                        {item.conversion_type && (
+                          <ArrowRight className="w-4 h-4 text-indigo-600" />
+                        )}
+                      </div>
+                      {item.density && item.conversion_type && (
+                        <div className="text-xs text-gray-600 mt-1">
+                          ρ = {item.density} kg/L
+                        </div>
+                      )}
                     </div>
+
+                    <div className="text-center text-indigo-600 font-bold text-sm my-2">↓</div>
+                    
+                    <div className="text-sm font-medium text-gray-800 mb-2">{item.nama_kiloan}</div>
+                    
+                    <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded p-2">
+                      <div className="text-sm text-green-700 font-semibold">
+                        +{(item.jumlah_output || item.jumlah).toFixed(2)} {item.satuan_output}
+                      </div>
+                    </div>
+
                     {item.keterangan && (
-                      <div className="mt-2 text-xs text-gray-600">{item.keterangan}</div>
+                      <div className="mt-2 text-xs text-gray-600 border-t border-gray-200 pt-2">
+                        {item.keterangan}
+                      </div>
                     )}
                   </div>
                 ))}
-                <div className="bg-indigo-50 p-3 rounded-lg">
-                  <div className="flex justify-between items-center">
-                    <span className="font-bold text-gray-800">Total:</span>
-                    <span className="font-bold text-green-600">{calculateTotalQty().toFixed(2)} kg</span>
-                  </div>
-                </div>
               </div>
 
               {/* Desktop View - Table */}
@@ -405,7 +744,7 @@ export default function ModalTambahUnloading({
                       <th className="px-3 py-2 text-left border">Produk Jerigen</th>
                       <th className="px-3 py-2 text-center border">→</th>
                       <th className="px-3 py-2 text-left border">Produk Kiloan</th>
-                      <th className="px-3 py-2 text-right border">Jumlah</th>
+                      <th className="px-3 py-2 text-right border">Input → Output</th>
                       <th className="px-3 py-2 text-left border">Keterangan</th>
                       <th className="px-3 py-2 text-center border">Action</th>
                     </tr>
@@ -424,9 +763,25 @@ export default function ModalTambahUnloading({
                         </td>
                         <td className="px-3 py-2 border font-medium">{item.nama_kiloan}</td>
                         <td className="px-3 py-2 text-right border">
-                          <span className="font-semibold text-green-600">
-                            {item.jumlah.toFixed(2)} {item.satuan}
-                          </span>
+                          <div className="space-y-1">
+                            <div className="text-red-600 font-semibold">
+                              -{item.jumlah.toFixed(2)} {item.satuan_input}
+                            </div>
+                            {item.conversion_type && (
+                              <>
+                                <div className="flex items-center justify-end gap-1">
+                                  <Droplets className="w-3 h-3 text-cyan-600" />
+                                  <span className="text-xs text-gray-500">
+                                    ρ={item.density} kg/L
+                                  </span>
+                                </div>
+                                <div className="text-indigo-600 font-bold">↓</div>
+                              </>
+                            )}
+                            <div className="text-green-600 font-semibold">
+                              +{(item.jumlah_output || item.jumlah).toFixed(2)} {item.satuan_output}
+                            </div>
+                          </div>
                         </td>
                         <td className="px-3 py-2 border text-gray-600">{item.keterangan || '-'}</td>
                         <td className="px-3 py-2 text-center border">
@@ -441,9 +796,9 @@ export default function ModalTambahUnloading({
                       </tr>
                     ))}
                     <tr className="bg-indigo-50 font-bold">
-                      <td colSpan={3} className="px-3 py-2 text-right border">Total:</td>
-                      <td className="px-3 py-2 text-right border text-green-600">
-                        {calculateTotalQty().toFixed(2)} kg
+                      <td colSpan={3} className="px-3 py-2 text-right border">Total Input:</td>
+                      <td className="px-3 py-2 text-right border text-red-600">
+                        {calculateTotalQty().toFixed(2)} KG/ML
                       </td>
                       <td colSpan={2} className="border"></td>
                     </tr>
@@ -476,7 +831,7 @@ export default function ModalTambahUnloading({
             </button>
             <button
               type="submit"
-              disabled={loading || detailItems.length === 0}
+              disabled={loading || detailItems.length === 0 || !formData.cabang_id}
               className="w-full sm:w-auto px-6 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition disabled:opacity-50"
             >
               {loading ? 'Menyimpan...' : 'Simpan Unloading'}

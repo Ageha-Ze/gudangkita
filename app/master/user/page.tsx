@@ -95,8 +95,11 @@ export default function UserPage() {
   };
 
   const totalUsers = users.length;
-  const adminUsers = users.filter(u => String(u.level).toLowerCase() === 'admin').length;
-  const regularUsers = users.filter(u => String(u.level).toLowerCase() !== 'admin').length;
+  const adminUsers = users.filter(u =>
+    String(u.level).toLowerCase() === 'admin' ||
+    String(u.level).toLowerCase() === 'super_admin'
+  ).length;
+  const regularUsers = users.filter(u => String(u.level).toLowerCase() !== 'admin' && String(u.level).toLowerCase() !== 'super_admin').length;
 
   const getLevelBadge = (level: string | number) => {
     const levelLower = String(level).toLowerCase();

@@ -24,6 +24,7 @@ export default function ProduksiPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [showModal, setShowModal] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const itemsPerPage = 10;
 
@@ -34,37 +35,113 @@ export default function ProduksiPage() {
   const fetchProduksis = async () => {
     try {
       setLoading(true);
+      setError(null);
+
       const res = await fetch(`/api/gudang/produksi?page=${page}&limit=10&search=${search}`);
+
       if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
+        let errorMessage = 'Gagal memuat data produksi';
+
+        if (res.status === 401) {
+          errorMessage = 'Sesi login telah berakhir. Silakan login kembali.';
+        } else if (res.status === 403) {
+          errorMessage = 'Anda tidak memiliki akses untuk melihat data produksi.';
+        } else if (res.status === 500) {
+          errorMessage = 'Server mengalami masalah. Silakan coba lagi dalam beberapa saat.';
+        } else {
+          const errorJson = await res.json().catch(() => null);
+          if (errorJson?.error) {
+            errorMessage += ': ' + errorJson.error;
+          }
+        }
+
+        throw new Error(errorMessage);
       }
+
       const json = await res.json();
+
+      if (json.success === false) {
+        throw new Error(json.error || 'Gagal memuat data produksi');
+      }
+
       setProduksis(json.data || []);
       setTotalPages(json.pagination?.totalPages || 1);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching produksis:', error);
-      alert('Failed to load data. Check console for details.');
+      let errorMessage = 'Terjadi kesalahan saat memuat data. Silakan periksa koneksi internet Anda.';
+      if (error.message?.includes('NetworkError') || error.message?.includes('ECONNREFUSED')) {
+        errorMessage = 'Koneksi internet bermasalah. Tidak dapat memuat data produksi.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      setError(errorMessage);
+      setProduksis([]);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (produksiId: number) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus data ini?')) return;
+    if (!confirm('Apakah Anda yakin ingin menghapus data produksi ini? Data yang sudah dihapus tidak dapat dikembalikan.')) return;
+
+    setLoading(true);
+    setError(null);
 
     try {
       const res = await fetch(`/api/gudang/produksi/${produksiId}`, { method: 'DELETE' });
+
+      if (!res.ok) {
+        let errorMessage = 'Gagal menghapus data produksi';
+
+        if (res.status === 401) {
+          errorMessage = 'Sesi login telah berakhir. Silakan login kembali.';
+        } else if (res.status === 403) {
+          errorMessage = 'Anda tidak memiliki akses untuk menghapus data produksi.';
+        } else if (res.status === 404) {
+          errorMessage = 'Data produksi tidak ditemukan. Mungkin sudah dihapus sebelumnya.';
+        } else if (res.status === 409) {
+          errorMessage = 'Data produksi tidak dapat dihapus karena masih ada referensi aktif di sistem.';
+        } else if (res.status === 500) {
+          errorMessage = 'Server mengalami masalah. Silakan coba lagi dalam beberapa saat.';
+        } else {
+          const errorJson = await res.json().catch(() => null);
+          if (errorJson?.error) {
+            errorMessage += ': ' + errorJson.error;
+          }
+        }
+
+        throw new Error(errorMessage);
+      }
+
       const json = await res.json();
 
-      if (res.ok) {
-        alert('Data berhasil dihapus');
-        fetchProduksis();
+      if (json.success) {
+        // Success notification
+        const successDiv = document.createElement('div');
+        successDiv.className = 'fixed top-4 right-4 bg-green-50 border border-green-200 text-green-700 px-6 py-4 rounded-lg shadow-lg z-50 flex items-center gap-3';
+        successDiv.innerHTML = `
+          <span class="text-green-600">✅</span>
+          <div>
+            <p class="font-semibold">Data Produksi Dihapus!</p>
+            <p class="text-sm">Data produksi berhasil dihapus dari sistem.</p>
+          </div>
+          <button onclick="this.parentElement.remove()" class="text-green-700 hover:text-green-900 font-bold">×</button>
+        `;
+        document.body.appendChild(successDiv);
+        setTimeout(() => successDiv.remove(), 5000);
+
+        await fetchProduksis();
       } else {
-        alert(`Gagal menghapus data: ${json.error || 'Unknown error'}`);
+        setError(json.error || 'Gagal menghapus data produksi');
       }
-    } catch (error) {
-      console.warn('Error deleting production:', error);
-      alert('Terjadi kesalahan saat menghapus data');
+
+    } catch (error: any) {
+      console.error('Error deleting production:', error);
+      const errorMessage = error.message?.includes('Gagal menghapus') || error.message?.includes('Gagal memuat') ?
+        error.message : 'Terjadi kesalahan saat menghapus data produksi. Silakan coba lagi.';
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -145,6 +222,22 @@ export default function ProduksiPage() {
           </div>
         </div>
       </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center justify-between mb-4 sm:mb-6">
+          <div className="flex items-center gap-3">
+            <span className="text-red-500">⚠️</span>
+            <p className="text-sm font-medium">{error}</p>
+          </div>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-700 hover:text-red-900 font-bold text-lg"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Main Card */}
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">

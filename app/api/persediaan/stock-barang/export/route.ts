@@ -1,6 +1,6 @@
 // app/api/persediaan/stock-barang/export/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import * as XLSX from 'xlsx';
 
 /**
@@ -9,7 +9,7 @@ import * as XLSX from 'xlsx';
  */
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { searchParams } = new URL(request.url);
     
     const type = searchParams.get('type') || 'overview';

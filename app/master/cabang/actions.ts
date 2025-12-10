@@ -1,6 +1,6 @@
 'use server';
 
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import { revalidatePath } from 'next/cache';
 
 // Define return types for consistency
@@ -14,7 +14,7 @@ type ActionResult = {
 
 export async function getCabang(): Promise<ActionResult> {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     const { data, error } = await supabase
       .from('cabang')
@@ -46,7 +46,7 @@ export async function getCabang(): Promise<ActionResult> {
 
 export async function addCabang(formData: any): Promise<ActionResult> {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
 
     // Validasi nama_kas wajib diisi
     if (!formData.nama_kas) {
@@ -123,7 +123,7 @@ export async function addCabang(formData: any): Promise<ActionResult> {
 
 export async function updateCabang(id: number, formData: any): Promise<ActionResult> {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     // 1. Update Cabang
     const { data: cabangData, error: cabangError } = await supabase
@@ -209,7 +209,7 @@ export async function updateCabang(id: number, formData: any): Promise<ActionRes
 
 export async function deleteCabang(id: number): Promise<ActionResult> {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     // Check if there are related kas records
     const { data: relatedKas, error: checkKasError } = await supabase

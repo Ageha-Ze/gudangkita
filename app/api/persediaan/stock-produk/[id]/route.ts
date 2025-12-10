@@ -1,7 +1,7 @@
 // app/api/persediaan/stock-produk/[id]/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 // PUT - Update stock produk di gudang tertentu
 export async function PUT(
@@ -9,7 +9,8 @@ export async function PUT(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await supabaseServer();
+        const supabase = await supabaseAuthenticated();
+
     const { id } = await context.params;
     const body = await request.json();
 
@@ -111,7 +112,8 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await supabaseServer();
+        const supabase = await supabaseAuthenticated();
+
     const { id } = await context.params;
 
     console.log('🗑️ Deleting stock_produk ID:', id);

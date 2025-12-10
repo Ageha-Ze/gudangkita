@@ -1,4 +1,4 @@
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import { NextResponse } from 'next/server';
 
 export async function GET(request: Request) {
@@ -13,7 +13,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
 
     // Query direct sales (transaksi_penjualan) by pegawai_id
     const { data: directSales, error: directSalesError } = await supabase

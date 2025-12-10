@@ -1,12 +1,12 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 // POST - Stock Masuk (dari pembelian atau produksi)
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const body = await request.json();
 
     const {

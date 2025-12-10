@@ -2,7 +2,7 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 // POST - Tambah item ke pembelian
 export async function POST(
@@ -10,7 +10,7 @@ export async function POST(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { id: pembelian_id } = await context.params;
     const body = await request.json();
 
@@ -23,6 +23,37 @@ export async function POST(
         { error: 'ID pembelian tidak valid' },
         { status: 400 }
       );
+    }
+
+    // ✅ DUPLICATE VALIDATION: Cek apakah produk sudah ada di pembelian ini
+    const { data: existingItem, error: checkError } = await supabase
+      .from('detail_pembelian')
+      .select('id, produk_id')
+      .eq('pembelian_id', pembelian_id)
+      .eq('produk_id', body.produk_id)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Error checking duplicate item:', checkError);
+      return NextResponse.json(
+        { error: 'Error checking duplicate item' },
+        { status: 500 }
+      );
+    }
+
+    if (existingItem) {
+      // Get product name for better error message
+      const { data: produk } = await supabase
+        .from('produk')
+        .select('nama_produk')
+        .eq('id', body.produk_id)
+        .single();
+
+      return NextResponse.json({
+        error: `Produk ${produk?.nama_produk || 'dengan ID ' + body.produk_id} sudah ada dalam pembelian ini. Silakan edit jumlahnya atau hapus item yang sudah ada terlebih dahulu.`,
+        errorCode: 'DUPLICATE_PRODUCT',
+        existingItemId: existingItem.id
+      }, { status: 409 }); // 409 Conflict for duplicates
     }
 
     // Hitung subtotal
@@ -98,7 +129,7 @@ export async function POST(
 // DELETE - Hapus item dari pembelian
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const searchParams = request.nextUrl.searchParams;
     const itemId = searchParams.get('itemId');
     const pembelianId = searchParams.get('pembelianId');

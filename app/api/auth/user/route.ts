@@ -1,4 +1,4 @@
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import { NextResponse } from 'next/server';
 
 export async function GET(request: Request) {
@@ -17,7 +17,7 @@ export async function GET(request: Request) {
 
     // Use the token to get user information
     // Since we're using Supabase auth, we can get the user from the token
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
 
     if (authError || !authUser) {

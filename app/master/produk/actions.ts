@@ -1,6 +1,6 @@
 'use server';
 
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import { revalidatePath } from 'next/cache';
 
 type ActionResult = {
@@ -12,7 +12,7 @@ type ActionResult = {
 
 export async function getProduk(): Promise<ActionResult> {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     const { data, error } = await supabase
       .from('produk')
@@ -50,9 +50,11 @@ export async function addProduk(formData: {
   stok: number;
   satuan: string;
   is_jerigen: boolean;
+  density_kg_per_liter?: number; // 🆕
+  allow_manual_conversion?: boolean; // 🆕
 }): Promise<ActionResult> {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     // Jika kode_produk tidak diisi, generate otomatis
     let kodeProduk = formData.kode_produk;
@@ -80,6 +82,8 @@ export async function addProduk(formData: {
         stok: formData.stok || 0,
         satuan: formData.satuan,
         is_jerigen: formData.is_jerigen || false,
+        density_kg_per_liter: formData.density_kg_per_liter || 1.0, // 🆕
+        allow_manual_conversion: formData.allow_manual_conversion || false, // 🆕
       }])
       .select()
       .single();
@@ -117,9 +121,11 @@ export async function updateProduk(id: number, formData: {
   stok: number;
   satuan: string;
   is_jerigen: boolean;
+  density_kg_per_liter?: number; // 🆕
+  allow_manual_conversion?: boolean; // 🆕
 }): Promise<ActionResult> {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     const { data, error } = await supabase
       .from('produk')
@@ -130,6 +136,8 @@ export async function updateProduk(id: number, formData: {
         stok: formData.stok || 0,
         satuan: formData.satuan,
         is_jerigen: formData.is_jerigen || false,
+        density_kg_per_liter: formData.density_kg_per_liter || 1.0, // 🆕
+        allow_manual_conversion: formData.allow_manual_conversion || false, // 🆕
       })
       .eq('id', id)
       .select()
@@ -162,7 +170,7 @@ export async function updateProduk(id: number, formData: {
 
 export async function deleteProduk(id: number): Promise<ActionResult> {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     // Cek apakah produk digunakan di transaksi
     const { data: detailPembelian } = await supabase

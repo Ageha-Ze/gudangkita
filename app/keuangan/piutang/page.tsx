@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Eye, Search, Download, X, Plus, Calendar } from 'lucide-react';
+import { Eye, Search, Download, X, Plus, Calendar, Check } from 'lucide-react';
 
 interface PiutangItem {
   id: number;
@@ -51,6 +51,7 @@ export default function PiutangPenjualanPage() {
   const [cabangList, setCabangList] = useState<Cabang[]>([]);
   const [kasList, setKasList] = useState<Array<{ id: number; nama_kas: string }>>([]);
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
+  const [error, setError] = useState<string | null>(null);
 
   // Form pembayaran
   const [formPembayaran, setFormPembayaran] = useState({
@@ -109,20 +110,49 @@ export default function PiutangPenjualanPage() {
   const fetchPiutangData = async () => {
     try {
       setLoading(true);
+      setError(null); // Reset error sebelum fetch
+
       const params = new URLSearchParams({
         cabang_id: selectedCabang,
         status: selectedStatus,
         search: searchQuery
       });
+
       const response = await fetch(`/api/keuangan/piutang?${params}`);
-      if (response.ok) {
-        const data = await response.json();
-        setPiutangData(data);
-      } else {
-        console.error('Failed to fetch piutang data');
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-    } catch (error) {
+
+      const data = await response.json();
+
+      // API returns array directly, not wrapped in success object
+      if (Array.isArray(data)) {
+        setPiutangData(data);
+      } else if (data.success === false) {
+        throw new Error(data.error || 'Gagal memuat data piutang');
+      } else {
+        // Handle case where it returns object with data field
+        setPiutangData(data.data || data || []);
+      }
+    } catch (error: any) {
       console.error('Error fetching piutang data:', error);
+      let errorMessage = 'Terjadi kesalahan saat memuat data piutang. Silakan coba lagi.';
+
+      if (error.message?.includes('HTTP 401')) {
+        errorMessage = 'Sesi login telah berakhir. Silakan login kembali.';
+      } else if (error.message?.includes('HTTP 403')) {
+        errorMessage = 'Anda tidak memiliki akses untuk melihat data piutang.';
+      } else if (error.message?.includes('HTTP 500')) {
+        errorMessage = 'Server mengalami masalah. Silakan coba lagi dalam beberapa saat.';
+      } else if (error.message?.includes('ECONNREFUSED') || error.message?.includes('NetworkError')) {
+        errorMessage = 'Koneksi internet bermasalah. Periksa koneksi Anda.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      setError(errorMessage);
+      setPiutangData([]);
     } finally {
       setLoading(false);
     }
@@ -167,32 +197,79 @@ export default function PiutangPenjualanPage() {
 
 
   const fetchDetailPiutang = async (piutangId: number) => {
+    setLoading(true);
+    setError(null);
+
     try {
-    const response = await fetch(`/api/keuangan/piutang/${piutangId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setSelectedPiutang(data);
-        setShowDetailModal(true);
+      const response = await fetch(`/api/keuangan/piutang/${piutangId}`);
+
+      if (!response.ok) {
+        let errorMessage = 'Gagal memuat detail piutang';
+
+        if (response.status === 401) {
+          errorMessage = 'Sesi login telah berakhir. Silakan login kembali.';
+        } else if (response.status === 403) {
+          errorMessage = 'Anda tidak memiliki akses untuk melihat detail piutang.';
+        } else if (response.status === 404) {
+          errorMessage = 'Data piutang tidak ditemukan.';
+        } else {
+          const errorJson = await response.json().catch(() => null);
+          if (errorJson?.error) {
+            errorMessage += ': ' + errorJson.error;
+          }
+        }
+
+        throw new Error(errorMessage);
       }
-    } catch (error) {
+
+      const data = await response.json();
+
+      if (data.success === false) {
+        throw new Error(data.error || 'Gagal memuat detail piutang');
+      }
+
+      setSelectedPiutang(data);
+      setShowDetailModal(true);
+    } catch (error: any) {
       console.error('Error fetching detail piutang:', error);
+      const errorMessage = error.message?.includes('Gagal memuat') ?
+        error.message : 'Terjadi kesalahan saat memuat detail piutang. Silakan coba lagi.';
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleInputPembayaran = async () => {
-    if (!selectedPiutang) return;
+    if (!selectedPiutang) {
+      setError('Data piutang tidak ditemukan. Silakan refresh halaman.');
+      return;
+    }
 
     const jumlahBayar = parseFloat(formPembayaran.jumlahBayar);
-    
+
     if (isNaN(jumlahBayar) || jumlahBayar <= 0) {
-      alert('Jumlah pembayaran tidak valid');
+      setError('Jumlah pembayaran tidak valid. Masukkan angka positif.');
       return;
     }
 
     if (jumlahBayar > selectedPiutang.sisaPiutang) {
-      alert('Jumlah pembayaran melebihi sisa piutang');
+      setError('Jumlah pembayaran melebihi sisa piutang. Maksimal pembayaran adalah ' + formatRupiah(selectedPiutang.sisaPiutang));
       return;
     }
+
+    if (!formPembayaran.tanggalBayar) {
+      setError('Tanggal pembayaran wajib diisi.');
+      return;
+    }
+
+    if (!formPembayaran.kasId) {
+      setError('Akun kas wajib dipilih.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
 
     try {
       const response = await fetch(`/api/keuangan/piutang/${selectedPiutang.id}`, {
@@ -208,26 +285,69 @@ export default function PiutangPenjualanPage() {
         })
       });
 
-      if (response.ok) {
-        alert('Pembayaran berhasil dicatat');
+      if (!response.ok) {
+        let errorMessage = 'Gagal mencatat pembayaran piutang';
+
+        if (response.status === 400) {
+          errorMessage = 'Data pembayaran tidak valid. Periksa kembali informasi yang dimasukkan.';
+        } else if (response.status === 401) {
+          errorMessage = 'Sesi login telah berakhir. Silakan login kembali.';
+        } else if (response.status === 403) {
+          errorMessage = 'Anda tidak memiliki akses untuk mencatat pembayaran piutang.';
+        } else if (response.status === 404) {
+          errorMessage = 'Data piutang tidak ditemukan. Mungkin sudah dihapus.';
+        } else if (response.status === 409) {
+          errorMessage = 'Pembayaran tidak dapat diproses karena konflik data.';
+        } else {
+          const errorJson = await response.json().catch(() => null);
+          if (errorJson?.error) {
+            errorMessage += ': ' + errorJson.error;
+          }
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
+
+      if (result.success) {
+        // Success notification
+        const successDiv = document.createElement('div');
+        successDiv.className = 'fixed top-4 right-4 bg-green-50 border border-green-200 text-green-700 px-6 py-4 rounded-lg shadow-lg z-50 flex items-center gap-3';
+        successDiv.innerHTML = `
+          <span class="text-green-600">✅</span>
+          <div>
+            <p class="font-semibold">Pembayaran Berhasil Dicatat!</p>
+            <p class="text-sm">Pembayaran sebesar ${formatRupiah(jumlahBayar)} telah tercatat dalam sistem.</p>
+          </div>
+          <button onclick="this.parentElement.remove()" class="text-green-700 hover:text-green-900 font-bold">×</button>
+        `;
+        document.body.appendChild(successDiv);
+        setTimeout(() => successDiv.remove(), 5000);
+
+        // Close modals and refresh data
         setShowPembayaranModal(false);
         setShowDetailModal(false);
-        fetchPiutangData();
-        
+        await fetchPiutangData();
+
         // Reset form
         setFormPembayaran({
           jumlahBayar: '',
           tanggalBayar: new Date().toISOString().split('T')[0],
           keterangan: '',
-          kasId: 'CASH TAGIHAN'
+          kasId: kasList.length > 0 ? kasList[0].id.toString() : ''
         });
       } else {
-        const error = await response.json();
-        alert(error.error || 'Gagal mencatat pembayaran');
+        setError(result.error || 'Gagal mencatat pembayaran piutang');
       }
-    } catch (error) {
+
+    } catch (error: any) {
       console.error('Error input pembayaran:', error);
-      alert('Terjadi kesalahan saat mencatat pembayaran');
+      const errorMessage = error.message?.includes('Gagal mencatat') || error.message?.includes('Gagal memuat') ?
+        error.message : 'Terjadi kesalahan saat mencatat pembayaran. Silakan periksa koneksi internet Anda.';
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -276,6 +396,22 @@ export default function PiutangPenjualanPage() {
         <h1 className="text-3xl font-bold text-gray-800 mb-2">Piutang Penjualan</h1>
         <p className="text-gray-600">Monitor dan kelola piutang penjualan dari semua cabang</p>
       </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center justify-between mb-4 sm:mb-6">
+          <div className="flex items-center gap-3">
+            <span className="text-red-500">⚠️</span>
+            <p className="text-sm font-medium">{error}</p>
+          </div>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-700 hover:text-red-900 font-bold text-lg"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -530,13 +666,22 @@ export default function PiutangPenjualanPage() {
                 >
                   Tutup
                 </button>
-                <button 
-                  onClick={handleShowPembayaran}
-                  className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
-                >
-                  <Plus className="w-4 h-4" />
-                  Input Pembayaran
-                </button>
+
+                {/* ✅ CONDITIONALLY SHOW PAYMENT BUTTON BASED ON STATUS */}
+                {selectedPiutang.status !== 'Lunas' && selectedPiutang.sisaPiutang > 0 ? (
+                  <button
+                    onClick={handleShowPembayaran}
+                    className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Input Pembayaran
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 px-6 py-2 bg-green-100 text-green-800 rounded-lg">
+                    <Check className="w-4 h-4" />
+                    ✓ Piutang Sudah Lunas
+                  </div>
+                )}
               </div>
             </div>
           </div>

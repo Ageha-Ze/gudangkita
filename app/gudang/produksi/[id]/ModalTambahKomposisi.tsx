@@ -19,12 +19,21 @@ interface ModalTambahKomposisiProps {
   cabangId: number;
 }
 
-export default function ModalTambahKomposisi({ 
-  isOpen, 
-  onClose, 
-  onSuccess, 
-  produksiId, 
-  cabangId 
+interface KomposisiItem {
+  item_id: number;
+  jumlah: number;
+  produk?: {
+    nama_produk?: string;
+    satuan?: string;
+  };
+}
+
+export default function ModalTambahKomposisi({
+  isOpen,
+  onClose,
+  onSuccess,
+  produksiId,
+  cabangId
 }: ModalTambahKomposisiProps) {
   const [form, setForm] = useState({ item_id: '', jumlah: '' });
   const [produks, setProduks] = useState<Produk[]>([]);
@@ -32,6 +41,7 @@ export default function ModalTambahKomposisi({
   const [hpp, setHpp] = useState<number>(0);
   const [subtotal, setSubtotal] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [existingKomposisi, setExistingKomposisi] = useState<KomposisiItem[]>([]);
 
   // Fetch produk saat modal dibuka
   useEffect(() => {

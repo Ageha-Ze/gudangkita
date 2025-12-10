@@ -22,11 +22,11 @@ export default function ModalCicil({
 }: Props) {
   const [rekenings, setRekenings] = useState<any[]>([]);
   const [formData, setFormData] = useState({
-  rekening: '',
-  tanggal_cicilan: new Date().toISOString().split('T')[0],
-  nilai_cicilan: 0,
-  keterangan: '',
-});
+    rekening: '',
+    tanggal_cicilan: new Date().toISOString().split('T')[0],
+    nilai_cicilan: 0,
+    keterangan: '',
+  });
 
   const [loading, setLoading] = useState(false);
 
@@ -90,8 +90,8 @@ export default function ModalCicil({
           tanggal_cicilan: formData.tanggal_cicilan,
           jumlah_cicilan: formData.nilai_cicilan,
           rekening: formData.rekening,
-          jenis_pembayaran: "cicilan", // ← langsung pakai cicilan
-          keterangan: '',
+          jenis_pembayaran: "cicilan",
+          keterangan: formData.keterangan, // ✅ FIX: Gunakan value dari formData
         }),
       });
 
@@ -103,8 +103,7 @@ export default function ModalCicil({
           rekening: '',
           tanggal_cicilan: new Date().toISOString().split('T')[0],
           nilai_cicilan: 0,
-            keterangan: '',
-
+          keterangan: '',
         });
         onSuccess(json?.pembelian);
         onClose();
@@ -124,8 +123,7 @@ export default function ModalCicil({
       rekening: '',
       tanggal_cicilan: new Date().toISOString().split('T')[0],
       nilai_cicilan: 0,
-        keterangan: '',
-
+      keterangan: '',
     });
     onClose();
   };
@@ -186,8 +184,10 @@ export default function ModalCicil({
               min="0"
               required
             />
-            <p className="text-xs mt-1">Maksimal: Rp. {sisaTagihan.toLocaleString('id-ID')}</p>
-            <p className={`text-xs mt-1 ${isOver ? 'text-red-500' : 'text-gray-500'}`}>
+            <p className="text-xs mt-1 text-gray-600">
+              Maksimal: Rp. {sisaTagihan.toLocaleString('id-ID')}
+            </p>
+            <p className={`text-xs mt-1 ${isOver ? 'text-red-500 font-semibold' : 'text-gray-500'}`}>
               Sisa setelah cicilan: Rp. {remainingAfter.toLocaleString('id-ID')}
             </p>
           </div>
@@ -219,24 +219,28 @@ export default function ModalCicil({
           </div>
 
           <div>
-  <label className="block text-sm font-medium mb-1">Keterangan</label>
-  <textarea
-    placeholder="Opsional — contoh: cicilan ke-2, pelunasan DP, dll"
-    value={formData.keterangan}
-    onChange={(e) =>
-      setFormData({ ...formData, keterangan: e.target.value })
-    }
-    className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-    rows={2}
-  />
-</div>
-
+            <label className="block text-sm font-medium mb-1">
+              Keterangan
+            </label>
+            <textarea
+              placeholder="Opsional — contoh: cicilan ke-2, pelunasan DP, dll"
+              value={formData.keterangan}
+              onChange={(e) =>
+                setFormData({ ...formData, keterangan: e.target.value })
+              }
+              className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              rows={3}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Catatan tambahan untuk cicilan ini (opsional)
+            </p>
+          </div>
 
           <div className="flex gap-2 pt-4">
             <button
               type="submit"
               disabled={loading || formData.nilai_cicilan <= 0 || isOver}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Menyimpan...' : 'Simpan'}
             </button>

@@ -1,7 +1,7 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 // GET - Detail piutang dengan history pembayaran
 export async function GET(
@@ -9,7 +9,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { id } = await context.params;
     const penjualanId = parseInt(id);
 
@@ -93,7 +93,7 @@ export async function GET(
 
     // Gunakan terbayar dari cicilan sebagai source of truth
     const terbayar = terbayarDariCicilan;
-    const sisaPiutang = totalPiutang - terbayar;
+    let sisaPiutang = totalPiutang - terbayar;
     const persenPembayaran = totalPiutang > 0 ? (terbayar / totalPiutang) * 100 : 0;
 
     // 🔍 DEBUG LOG - Deteksi inkonsistensi data
@@ -103,11 +103,14 @@ export async function GET(
     console.log('   Total dari Detail Penjualan:', totalPiutang);
     console.log('   Terbayar dari Field DB:', dibayarFromDB);
     console.log('   Terbayar dari SUM Cicilan:', terbayarDariCicilan);
-    
-    if (Math.abs(dibayarFromDB - terbayarDariCicilan) > 0.01) {
-      console.warn('⚠️ INKONSISTENSI DATA TERDETEKSI!');
-      console.warn(`   Field 'dibayar' (${dibayarFromDB}) != SUM cicilan (${terbayarDariCicilan})`);
-      console.warn('   Menggunakan SUM cicilan sebagai data yang benar.');
+
+    // ✅ DETECTION: Prevent negative balances when customer overpays
+    if (terbayarDariCicilan > totalPiutang) {
+      console.warn('💰 OVERPAYMENT DETECTED!');
+      console.warn('   Customer paid:', terbayarDariCicilan, '(more than owed)');
+      console.warn('   Transaction total:', totalPiutang);
+      console.warn('   Correcting - setting sisa piutang = 0');
+      sisaPiutang = 0;
     }
 
     console.log('   Sisa Piutang:', sisaPiutang);
@@ -171,7 +174,7 @@ export async function PUT(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { id } = await context.params;
     const { jumlahBayar, tanggalBayar, keterangan, kasId } = await request.json();
 

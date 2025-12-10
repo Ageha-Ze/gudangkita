@@ -2,216 +2,219 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await supabaseServer();
-    const { id: pembelian_id } = await context.params;
+    const supabase = await supabaseAuthenticated();
+    const { id } = await context.params;
     const body = await request.json();
 
-    console.log('Processing pelunasan:', body);
+    console.log('🔥 PELUNASAN PEMBELIAN START - ID:', id);
+    console.log('📦 Body:', body);
 
-    // Get pembelian data first
-    const { data: pembelian, error: pembelianError } = await supabase
-      .from('transaksi_pembelian')
-      .select('*')
-      .eq('id', pembelian_id)
-      .single();
-
-    if (pembelianError) throw pembelianError;
-
-    // Calculate total amount and remaining balance (similar to sales logic)
-    const totalAmount = parseFloat(pembelian.total.toString()) + parseFloat(pembelian.biaya_kirim.toString());
-    const uangMuka = parseFloat(pembelian.uang_muka.toString());
-    const sudahDibayar = parseFloat(pembelian.dibayar?.toString() || '0');
-    const sisaHutang = totalAmount - sudahDibayar;
-
-    console.log('💰 PEMBELIAN CALCULATION:');
-    console.log('   Total Amount (total + biaya_kirim):', totalAmount);
-    console.log('   Uang Muka:', uangMuka);
-    console.log('   Sudah Dibayar:', sudahDibayar);
-    console.log('   Sisa Hutang:', sisaHutang);
-
-    // Get kas data untuk validasi saldo
-    if (body.rekening) {
-      console.log('Getting kas data for rekening:', body.rekening);
-
-      const { data: kas, error: kasError } = await supabase
-        .from('kas')
-        .select('*')
-        .eq('nama_kas', body.rekening)
-        .eq('cabang_id', pembelian.cabang_id || 1)
-        .single();
-
-      if (kasError) {
-        console.error('Error getting kas:', kasError);
-        throw kasError;
-      }
-
-      if (!kas) {
-        return NextResponse.json(
-          { error: 'Data kas tidak ditemukan' },
-          { status: 404 }
-        );
-      }
-
-      console.log('Kas data found:', kas);
-
-      const kasSaldo = parseFloat(kas.saldo.toString());
-
-      console.log('Saldo validation:', {
-        kas_nama: kas.nama_kas,
-        saldo_sekarang: kasSaldo,
-        sisa_hutang: sisaHutang,
-        cukup: kasSaldo >= sisaHutang
-      });
-
-      // Validasi: saldo harus cukup untuk pembayaran
-      if (kasSaldo < sisaHutang) {
-        return NextResponse.json(
-          { error: `Saldo kas tidak cukup. Saldo tersedia: Rp. ${kasSaldo.toLocaleString('id-ID')}` },
-          { status: 400 }
-        );
-      }
-
-      // PENTING: Kurangi saldo kas (KELUAR untuk pembelian)
-      const newSaldo = kasSaldo - sisaHutang;
-
-      console.log('Updating kas saldo:', {
-        old_saldo: kasSaldo,
-        sisa_hutang: sisaHutang,
-        new_saldo: newSaldo
-      });
-
-      const { error: updateKasError } = await supabase
-        .from('kas')
-        .update({ saldo: newSaldo })
-        .eq('id', kas.id);
-
-      if (updateKasError) {
-        console.error('Error updating kas:', updateKasError);
-        throw updateKasError;
-      }
-
-      console.log(`✅ Kas ${kas.nama_kas} updated: ${kasSaldo} - ${sisaHutang} = ${newSaldo}`);
-
-      // Insert transaksi kas (debit = keluar)
-      const { error: transaksiKasError } = await supabase
-        .from('transaksi_kas')
-        .insert({
-          kas_id: kas.id,
-          tanggal_transaksi: new Date().toISOString().split('T')[0],
-          debit: sisaHutang, // Debit = uang keluar
-          kredit: 0,
-          keterangan: `Pelunasan pembelian (ID: ${pembelian_id})`
-        });
-
-      if (transaksiKasError) {
-        console.error('Error insert transaksi_kas:', transaksiKasError);
-        // Don't throw, just log
-      } else {
-        console.log('✅ Transaksi kas recorded');
-      }
-    } else {
-      console.warn('⚠️ No rekening provided, skipping kas update');
-    }
-
-    // Check if pelunasan already exists
-    const { data: existingPelunasan } = await supabase
-      .from('cicilan_pembelian')
-      .select('id')
-      .eq('pembelian_id', parseInt(pembelian_id))
-      .eq('type', 'pelunasan')
-      .limit(1);
-
-    if (existingPelunasan && existingPelunasan.length > 0) {
+    // Validasi input
+    if (!body.rekening) {
       return NextResponse.json(
-        { error: 'Pelunasan sudah dilakukan sebelumnya' },
+        { error: 'Pilih rekening terlebih dahulu' },
         { status: 400 }
       );
     }
 
-    // Insert cicilan untuk pelunasan
-    const { error: cicilanError } = await supabase
+    // 1. Get pembelian data
+    const { data: pembelian, error: pembelianError } = await supabase
+      .from('transaksi_pembelian')
+      .select(`
+        total,
+        biaya_kirim,
+        uang_muka,
+        status_pembayaran,
+        detail_pembelian (subtotal)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (pembelianError) throw pembelianError;
+
+    // 2. Hitung total dari detail
+    const subtotal = pembelian.detail_pembelian?.reduce(
+      (sum: number, d: any) => sum + parseFloat(d.subtotal?.toString() || '0'),
+      0
+    ) || 0;
+    
+    const biayaKirim = parseFloat(pembelian.biaya_kirim?.toString() || '0');
+    const totalReal = subtotal + biayaKirim;
+
+    // 3. Get cicilan yang sudah dibayar
+    const { data: cicilans } = await supabase
       .from('cicilan_pembelian')
-      .insert({
-        pembelian_id: parseInt(pembelian_id),
-        tanggal_cicilan: new Date().toISOString().split('T')[0],
-        jumlah_cicilan: sisaHutang,
-        rekening: body.rekening,
-        type: 'pelunasan',
-        keterangan: body.keterangan || ''
-      });
+      .select('jumlah_cicilan')
+      .eq('pembelian_id', id);
 
-    if (cicilanError) throw cicilanError;
+    const sudahDibayar = cicilans?.reduce(
+      (sum, c) => sum + parseFloat(c.jumlah_cicilan?.toString() || '0'),
+      0
+    ) || 0;
 
-    // Update or create hutang record (try update first, then insert)
-    const totalHutang = totalAmount;
-    const dibayarTotal = sudahDibayar + sisaHutang;
+    const sisaPiutang = totalReal - sudahDibayar;
+    const nilaiDiskon = parseFloat(body.nilai_diskon || '0');
+    const sisaTagihan = sisaPiutang - nilaiDiskon;
 
-    // First try to update existing hutang record
-    const { data: updateResult, error: updateError } = await supabase
-      .from('hutang_pembelian')
-      .update({
-        total_hutang: totalHutang,
-        dibayar: dibayarTotal,
-        sisa: 0,
-        status: 'Lunas'
-      })
-      .eq('pembelian_id', parseInt(pembelian_id))
-      .select();
+    console.log('📊 PERHITUNGAN:');
+    console.log('   Total:', totalReal);
+    console.log('   Sudah Dibayar:', sudahDibayar);
+    console.log('   Sisa Piutang:', sisaPiutang);
+    console.log('   Diskon:', nilaiDiskon);
+    console.log('   Sisa Tagihan (yang akan dibayar):', sisaTagihan);
 
-    if (updateError) {
-      console.error('Error updating hutang:', updateError);
-      throw updateError;
+    // Validasi
+    if (nilaiDiskon > sisaPiutang) {
+      return NextResponse.json(
+        { error: 'Nilai diskon melebihi sisa hutang' },
+        { status: 400 }
+      );
     }
 
-    // If no rows were updated, create new hutang record
-    if (!updateResult || updateResult.length === 0) {
-      console.log('No existing hutang record found, creating new one');
-      const { error: insertError } = await supabase
-        .from('hutang_pembelian')
-        .insert({
-          pembelian_id: parseInt(pembelian_id),
-          suplier_id: pembelian.suplier_id,
-          total_hutang: totalHutang,
-          dibayar: dibayarTotal,
-          sisa: 0,
-          status: 'Lunas'
-        });
-
-      if (insertError) {
-        console.error('Error creating hutang:', insertError);
-        throw insertError;
-      }
-    } else {
-      console.log('Updated existing hutang record');
+    if (sisaTagihan < 0) {
+      return NextResponse.json(
+        { error: 'Sisa tagihan tidak valid' },
+        { status: 400 }
+      );
     }
 
-    // Update status pembayaran di transaksi_pembelian
-    const { error: updateTransaksiError } = await supabase
+    // 4. Get kas info
+    const { data: kas, error: kasError } = await supabase
+      .from('kas')
+      .select('id, saldo, nama_kas')
+      .eq('nama_kas', body.rekening)
+      .single();
+
+    if (kasError || !kas) {
+      return NextResponse.json(
+        { error: 'Rekening tidak ditemukan' },
+        { status: 404 }
+      );
+    }
+
+    const saldoKasLama = parseFloat(kas.saldo?.toString() || '0');
+
+    // ✅ VALIDASI SALDO KAS - HARUS CUKUP!
+    if (sisaTagihan > saldoKasLama) {
+      return NextResponse.json({
+        error: `Saldo kas tidak cukup. Saldo tersedia: Rp. ${saldoKasLama.toLocaleString('id-ID')}`
+      }, { status: 400 });
+    }
+
+    console.log('🏦 Kas:', kas.nama_kas);
+    console.log('   Saldo Lama:', saldoKasLama);
+    console.log('   Akan Dibayar:', sisaTagihan);
+
+    // 5. Update transaksi_pembelian
+    const totalDibayarBaru = sudahDibayar + sisaTagihan;
+    
+    const { error: updatePembelianError } = await supabase
       .from('transaksi_pembelian')
       .update({
         status_pembayaran: 'Lunas',
-        rekening_bayar: body.rekening,
-        tanggal_diterima: new Date().toISOString().split('T')[0] // opsional
-
       })
-      .eq('id', pembelian_id);
+      .eq('id', id);
 
-    if (updateTransaksiError) throw updateTransaksiError;
+    if (updatePembelianError) throw updatePembelianError;
+
+    console.log('✅ Status pembelian updated: Lunas');
+
+    // 6. Update hutang_pembelian (jika ada)
+    const { data: hutang } = await supabase
+      .from('hutang_pembelian')
+      .select('*')
+      .eq('pembelian_id', id)
+      .maybeSingle();
+
+    if (hutang) {
+      // When using diskon, treat it as additional payment towards the debt
+      const dibayarWithDiskon = totalDibayarBaru + nilaiDiskon;
+
+      await supabase
+        .from('hutang_pembelian')
+        .update({
+          dibayar: dibayarWithDiskon,
+          sisa: 0,
+          status: 'Lunas'
+        })
+        .eq('pembelian_id', id);
+
+      console.log('✅ Hutang pembelian updated');
+    }
+
+    // 7. ✅ KAS BERKURANG (bayar supplier)
+    const saldoKasBaru = saldoKasLama - sisaTagihan;
+    
+    console.log('🏦 Update Kas:', saldoKasLama, '-', sisaTagihan, '=', saldoKasBaru);
+
+    const { error: updateKasError } = await supabase
+      .from('kas')
+      .update({ saldo: saldoKasBaru })
+      .eq('id', kas.id);
+
+    if (updateKasError) throw updateKasError;
+
+    console.log('✅ Kas updated - saldo berkurang');
+
+    // 8. Insert transaksi kas (DEBIT = uang keluar)
+    const keteranganKas = `Pelunasan pembelian #${id}${nilaiDiskon > 0 ? ` (Diskon: Rp ${nilaiDiskon.toLocaleString('id-ID')})` : ''}`;
+    
+    const { error: insertTransaksiKasError } = await supabase
+      .from('transaksi_kas')
+      .insert({
+        kas_id: kas.id,
+        tanggal_transaksi: new Date().toISOString().split('T')[0],
+        debit: sisaTagihan, // ✅ DEBIT = uang keluar
+        kredit: 0,
+        keterangan: keteranganKas
+      });
+
+    if (insertTransaksiKasError) throw insertTransaksiKasError;
+
+    console.log('✅ Transaksi kas inserted - Debit:', sisaTagihan);
+
+    // 9. Insert cicilan history
+    const keteranganCicilan = `Pelunasan${nilaiDiskon > 0 ? ` (Diskon: Rp ${nilaiDiskon.toLocaleString('id-ID')})` : ''}`;
+    
+    const { error: insertCicilanError } = await supabase
+      .from('cicilan_pembelian')
+      .insert({
+        pembelian_id: parseInt(id),
+        tanggal_cicilan: new Date().toISOString().split('T')[0],
+        jumlah_cicilan: sisaTagihan,
+        rekening: body.rekening,
+        type: 'pelunasan',
+        keterangan: keteranganCicilan
+      });
+
+    if (insertCicilanError) throw insertCicilanError;
+
+    console.log('✅ Cicilan pembelian inserted');
+    console.log('🎉 PELUNASAN PEMBELIAN SUKSES!');
 
     return NextResponse.json({
-      message: 'Pelunasan berhasil diproses'
+      success: true,
+      message: '🎉 Pelunasan berhasil! Hutang LUNAS!',
+      data: {
+        sisa: 0,
+        status: 'Lunas',
+        jumlahDibayar: sisaTagihan,
+        totalDibayar: totalDibayarBaru,
+        saldoKasBaru,
+        diskon: nilaiDiskon
+      }
     });
   } catch (error: any) {
-    console.error('Error processing pelunasan:', error);
+    console.error('❌ ERROR PELUNASAN:', error);
     return NextResponse.json(
-      { error: error.message },
+      { error: error.message || 'Gagal proses pelunasan' },
       { status: 500 }
     );
   }

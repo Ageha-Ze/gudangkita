@@ -2,7 +2,13 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
+import { 
+  validateStockDeletion, 
+  restoreStock, 
+  restoreKasFromTransaction,
+  logAuditTrail 
+} from '@/lib/helpers/stockSafety';
 
 // GET - Detail penjualan
 export async function GET(
@@ -10,7 +16,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { id } = await context.params;
 
     const { data, error } = await supabase
@@ -108,55 +114,46 @@ export async function GET(
   }
 }
 
-// ✅ FIXED: DELETE - Hapus penjualan DAN kembalikan stock
+
+
+// ============================================================
+// ✅ ULTIMATE CLEAN DELETE with Foreign Keys
+// ============================================================
 export async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  const startTime = Date.now();
+  
   try {
-    const supabase = await supabaseServer();
-    const { id } = await context.params; // ✅ FIX: Use context.params, not searchParams
+    const supabase = await supabaseAuthenticated();
+    const { id } = await context.params;
 
     if (!id) {
       return NextResponse.json(
-        { error: 'ID penjualan tidak valid' },
+        { success: false, error: 'ID penjualan tidak valid' },
         { status: 400 }
       );
     }
 
     console.log('🗑️ DELETE PENJUALAN ID:', id);
 
-    // ✅ Step 1: Get penjualan data lengkap
+    // ============================================================
+    // STEP 1: Get penjualan data
+    // ============================================================
     const { data: penjualan, error: fetchError } = await supabase
       .from('transaksi_penjualan')
       .select(`
-        id,
-        nota_penjualan,
-        tanggal,
-        total,
-        dibayar,
-        status,
-        status_pembayaran,
-        status_diterima,
-        jenis_pembayaran,
-        kas_id,
-        cabang_id,
-        customer_id,
-        detail_penjualan (
-          id,
-          produk_id,
-          jumlah,
-          harga,
-          subtotal
-        )
+        id, nota_penjualan, tanggal, total, dibayar,
+        status, status_pembayaran, status_diterima, jenis_pembayaran,
+        kas_id, cabang_id, customer_id
       `)
       .eq('id', id)
       .single();
 
-    if (fetchError) {
-      console.error('❌ Error fetch penjualan:', fetchError);
+    if (fetchError || !penjualan) {
       return NextResponse.json(
-        { error: 'Data penjualan tidak ditemukan' },
+        { success: false, error: 'Data penjualan tidak ditemukan' },
         { status: 404 }
       );
     }
@@ -164,205 +161,173 @@ export async function DELETE(
     console.log('📦 Penjualan:', penjualan.nota_penjualan);
     console.log('📊 Status:', penjualan.status);
     console.log('📊 Status Diterima:', penjualan.status_diterima);
-    console.log('💰 Jenis Pembayaran:', penjualan.jenis_pembayaran);
-    console.log('💵 Total:', penjualan.total);
-    console.log('💵 Dibayar:', penjualan.dibayar);
 
-    // ✅ Step 2: Validasi - Cek apakah sudah ada cicilan/pembayaran
+    // ============================================================
+    // STEP 2: Validate - Check cicilan
+    // ============================================================
     const { data: cicilan } = await supabase
       .from('cicilan_penjualan')
-      .select('id')
+      .select('id, jumlah_cicilan')
       .eq('penjualan_id', id);
 
     if (cicilan && cicilan.length > 0) {
       return NextResponse.json(
-        { error: 'Tidak bisa hapus penjualan yang sudah ada pembayaran/cicilan' },
+        { 
+          success: false, 
+          error: 'Tidak bisa hapus penjualan yang sudah ada pembayaran/cicilan' 
+        },
         { status: 400 }
       );
     }
 
-    // ✅ Step 3: KEMBALIKAN STOCK - HANYA JIKA SUDAH DITERIMA
-    if (penjualan.status_diterima === 'Diterima') {
-      console.log('✅ Status sudah diterima, akan kembalikan stock...');
+    // ============================================================
+    // STEP 3: Validate Stock Safety (pakai helper)
+    // ============================================================
+    const stockValidation = await validateStockDeletion('penjualan', parseInt(id));
+    
+    if (!stockValidation.safe) {
+      return NextResponse.json({
+        success: false,
+        error: stockValidation.message
+      }, { status: 400 });
+    }
+
+    // ============================================================
+    // STEP 4: Restore Stock (pakai helper)
+    // ============================================================
+    const stockResult = await restoreStock('penjualan', parseInt(id));
+    
+    console.log(stockResult.restored 
+      ? `✅ Stock restored: ${stockResult.count} products`
+      : 'ℹ️ No stock to restore'
+    );
+
+    // ============================================================
+    // STEP 5: Restore Kas (if tunai)
+    // ============================================================
+    let kasResult = null;
+    if (penjualan.jenis_pembayaran === 'tunai' && 
+        penjualan.status === 'billed' && 
+        penjualan.kas_id) {
       
-      if (penjualan.detail_penjualan && penjualan.detail_penjualan.length > 0) {
-        for (const detail of penjualan.detail_penjualan) {
-          console.log(`  📦 Kembalikan stock produk ID ${detail.produk_id}: +${detail.jumlah}`);
-
-          // Get current stock
-          const { data: produk, error: produkError } = await supabase
-            .from('produk')
-            .select('stok, nama_produk, satuan')
-            .eq('id', detail.produk_id)
-            .single();
-
-          if (produkError) {
-            console.error(`  ❌ Error get produk ${detail.produk_id}:`, produkError);
-            continue;
-          }
-
-          const stokLama = parseFloat(produk.stok?.toString() || '0');
-          const jumlahKembali = parseFloat(detail.jumlah?.toString() || '0');
-          const stokBaru = stokLama + jumlahKembali;
-
-          console.log(`    ${produk.nama_produk}: ${stokLama} + ${jumlahKembali} = ${stokBaru}`);
-
-          // Update stock produk
-          const { error: updateStockError } = await supabase
-            .from('produk')
-            .update({ 
-              stok: stokBaru,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', detail.produk_id);
-
-          if (updateStockError) {
-            console.error(`  ❌ Error update stock:`, updateStockError);
-            throw new Error(`Gagal mengembalikan stock ${produk.nama_produk}`);
-          }
-
-          // ✅ Insert stock_barang history untuk pengembalian (bukan delete!)
-          await supabase
-            .from('stock_barang')
-            .insert({
-              produk_id: detail.produk_id,
-              cabang_id: penjualan.cabang_id,
-              jumlah: jumlahKembali,
-              tanggal: new Date().toISOString().split('T')[0],
-              tipe: 'masuk',
-              keterangan: `Pembatalan Penjualan - ${penjualan.nota_penjualan}`,
-              hpp: 0,
-              harga_jual: 0,
-              persentase: 0,
-            });
-
-          console.log(`  ✅ Stock ${produk.nama_produk} dikembalikan`);
-        }
-      }
-    } else {
-      console.log('⏭️ Status belum diterima, skip pengembalian stock');
-    }
-
-    // ✅ Step 4: KEMBALIKAN UANG KE KAS - JIKA TUNAI DAN SUDAH DIBAYAR
-    if (penjualan.jenis_pembayaran === 'tunai' && penjualan.status === 'billed') {
-      const kasId = penjualan.kas_id;
       const jumlahDibayar = parseFloat(penjualan.dibayar?.toString() || '0');
-
-      if (kasId && jumlahDibayar > 0) {
-        console.log('💰 Kembalikan uang ke kas...');
-
-        // Get current saldo kas
-        const { data: kas, error: kasError } = await supabase
-          .from('kas')
-          .select('saldo, nama_kas')
-          .eq('id', kasId)
-          .single();
-
-        if (kasError) {
-          console.error('❌ Error get kas:', kasError);
-        } else {
-          const saldoLama = parseFloat(kas.saldo?.toString() || '0');
-          const saldoBaru = saldoLama - jumlahDibayar;
-
-          console.log(`  ${kas.nama_kas}: ${saldoLama} - ${jumlahDibayar} = ${saldoBaru}`);
-
-          // Update saldo kas
-          const { error: updateKasError } = await supabase
-            .from('kas')
-            .update({ saldo: saldoBaru })
-            .eq('id', kasId);
-
-          if (updateKasError) {
-            console.error('❌ Error update kas:', updateKasError);
-            throw new Error('Gagal mengembalikan uang ke kas');
-          }
-
-          // ✅ Insert transaksi_kas untuk pembatalan (bukan delete!)
-          await supabase
-            .from('transaksi_kas')
-            .insert({
-              kas_id: kasId,
-              tanggal_transaksi: new Date().toISOString().split('T')[0],
-              debit: jumlahDibayar,
-              kredit: 0,
-              keterangan: `Pembatalan Penjualan Tunai - ${penjualan.nota_penjualan}`,
-            });
-
-          console.log('  ✅ Uang dikembalikan ke kas');
+      
+      if (jumlahDibayar > 0) {
+        try {
+          kasResult = await restoreKasFromTransaction(
+            penjualan.kas_id,
+            jumlahDibayar,
+            penjualan.nota_penjualan,
+            true // Money came in (kredit), so we subtract to reverse
+          );
+          
+          console.log(`✅ Kas restored: ${kasResult.kas}, Rp ${kasResult.amount}`);
+        } catch (kasError: any) {
+          console.error('⚠️ Warning: Kas restore failed:', kasError.message);
+          // Don't block deletion, just warn
         }
       }
     }
 
-    // ✅ Step 5: HAPUS PIUTANG - JIKA HUTANG
+    // ============================================================
+    // STEP 6: Delete Piutang (if hutang)
+    // ============================================================
+    let piutangDeleted = false;
     if (penjualan.jenis_pembayaran === 'hutang') {
-      console.log('💳 Hapus piutang...');
-
       const { error: deletePiutangError } = await supabase
         .from('piutang_penjualan')
         .delete()
         .eq('penjualan_id', parseInt(id));
 
-      if (deletePiutangError) {
-        console.error('⚠️ Warning: Failed to delete piutang:', deletePiutangError);
+      if (!deletePiutangError) {
+        piutangDeleted = true;
+        console.log('✅ Piutang deleted');
       } else {
-        console.log('  ✅ Piutang dihapus');
+        console.error('⚠️ Warning: Piutang delete failed:', deletePiutangError);
       }
     }
 
-    // ✅ Step 6: Delete detail_penjualan
+    // ============================================================
+    // STEP 7: Log Audit Trail
+    // ============================================================
+    const userId = request.headers.get('x-user-id');
+    await logAuditTrail(
+      'DELETE',
+      'transaksi_penjualan',
+      parseInt(id),
+      penjualan,
+      undefined,
+      userId ? parseInt(userId) : undefined,
+      request.headers.get('x-forwarded-for') || undefined
+    );
+
+    // ============================================================
+    // STEP 8: Delete Detail Penjualan (or CASCADE)
+    // ============================================================
     const { error: deleteDetailError } = await supabase
       .from('detail_penjualan')
       .delete()
       .eq('penjualan_id', id);
 
     if (deleteDetailError) {
-      console.error('❌ Error delete detail:', deleteDetailError);
-      throw new Error('Gagal menghapus detail penjualan');
+      console.error('⚠️ Warning: Detail delete failed:', deleteDetailError);
     }
 
-    console.log('✅ Detail penjualan deleted');
-
-    // ✅ Step 7: Delete transaksi_penjualan
+    // ============================================================
+    // STEP 9: Delete Transaksi Penjualan
+    // ============================================================
     const { error: deletePenjualanError } = await supabase
       .from('transaksi_penjualan')
       .delete()
       .eq('id', id);
 
     if (deletePenjualanError) {
-      console.error('❌ Error delete penjualan:', deletePenjualanError);
       throw deletePenjualanError;
     }
 
-    console.log('✅ Penjualan deleted');
+    // ============================================================
+    // STEP 10: Build Response
+    // ============================================================
+    const executionTime = Date.now() - startTime;
+    const actions: string[] = [];
 
-    // Build success message
-    let message = 'Penjualan berhasil dibatalkan';
-    if (penjualan.status_diterima === 'Diterima') {
-      message += ' dan stock dikembalikan';
-    }
-    if (penjualan.jenis_pembayaran === 'tunai' && parseFloat(penjualan.dibayar?.toString() || '0') > 0) {
-      message += ', uang dikembalikan ke kas';
-    }
-    if (penjualan.jenis_pembayaran === 'hutang') {
-      message += ', piutang dihapus';
-    }
+    if (stockResult.restored) actions.push(`stock dikembalikan (${stockResult.count} items)`);
+    if (kasResult) actions.push(`uang dikembalikan ke kas (Rp ${kasResult.amount})`);
+    if (piutangDeleted) actions.push('piutang dihapus');
 
-    console.log('✅ DELETE SUKSES!');
+    const message = actions.length > 0
+      ? `Penjualan berhasil dibatalkan dan ${actions.join(', ')}`
+      : 'Penjualan berhasil dibatalkan';
+
+    console.log(`✅ DELETE SUKSES! (${executionTime}ms)`);
 
     return NextResponse.json({
       success: true,
       message: message,
-      rollback_info: {
-        stock_returned: penjualan.status_diterima === 'Diterima',
-        cash_returned: penjualan.jenis_pembayaran === 'tunai' && parseFloat(penjualan.dibayar?.toString() || '0') > 0,
-        piutang_deleted: penjualan.jenis_pembayaran === 'hutang'
+      deleted: {
+        penjualan_id: id,
+        nota: penjualan.nota_penjualan,
+        stock_restored: stockResult.restored,
+        stock_items: stockResult.count,
+        kas_restored: kasResult !== null,
+        kas_amount: kasResult?.amount || 0,
+        piutang_deleted: piutangDeleted,
+        execution_time_ms: executionTime
+      },
+      details: {
+        stock_products: stockResult.products || [],
+        validation: stockValidation
       }
     });
 
   } catch (error: any) {
     console.error('❌ ERROR DELETE PENJUALAN:', error);
+    
     return NextResponse.json(
-      { error: error.message || 'Gagal menghapus penjualan' },
+      { 
+        success: false,
+        error: error.message || 'Gagal menghapus penjualan' 
+      },
       { status: 500 }
     );
   }
@@ -374,7 +339,7 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { id } = await context.params;
     const body = await request.json();
 

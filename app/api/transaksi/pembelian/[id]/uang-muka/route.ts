@@ -2,7 +2,7 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import { calculatePembelianTotals } from '@/lib/transaksi/calculatePembelianTotals';
 
 // PATCH - Update uang muka dan biaya kirim
@@ -11,7 +11,7 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { id: pembelian_id } = await context.params;
     const body = await request.json();
 

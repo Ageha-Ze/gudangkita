@@ -1,15 +1,11 @@
 // app/api/notifications/route.ts
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-// Initialize Supabase Client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 export async function GET() {
   try {
+    const supabase = await supabaseAuthenticated();
+
     const notifications: any[] = [];
     const today = new Date();
     const threeDaysFromNow = new Date(today);

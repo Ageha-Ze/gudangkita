@@ -1,10 +1,10 @@
 // app/api/dashboard/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const searchParams = request.nextUrl.searchParams;
     const cabangId = searchParams.get('cabangId');
     const period = searchParams.get('period') || '6'; // Default 6 bulan

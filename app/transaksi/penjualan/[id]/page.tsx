@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Trash2, CheckCircle, Package, User, MapPin, Calendar, CreditCard, TrendingUp, Wallet, Receipt } from 'lucide-react';
+import { ArrowLeft, Trash2, CheckCircle, Package, User, MapPin, Calendar, CreditCard, TrendingUp, Wallet, Receipt, Edit } from 'lucide-react';
+import { usePermissions, ReadOnlyBanner } from '@/components/PermissionGuard';
 import ModalTambahBarang from './ModalTambahBarang';
 import ModalBilling from './ModalBilling';
 import ModalCicilan from './ModalCicilan';
@@ -13,6 +14,7 @@ import HistoryCicilan from './HistoryCicilan';
 import ModalEditDataPenjualan from './ModalEditDataPenjualan';
 import ModalEditBiayaPenjualan from './ModalEditBiayaPenjualan';
 import ModalTerimaPenjualan from './ModalTerimaPenjualan';
+import ModalEditBarang from './ModalEditBarang';
 
 interface CicilanItem {
   id: number;
@@ -36,6 +38,8 @@ export default function DetailPenjualanPage({
   const [showModalEditPenjualan, setShowModalEditPenjualan] = useState(false);
   const [showModalEditBiaya, setShowModalEditBiaya] = useState(false);
   const [showModalTerima, setShowModalTerima] = useState(false);
+  const [showModalEditBarang, setShowModalEditBarang] = useState(false);
+  const [selectedDetail, setSelectedDetail] = useState<any>(null);
 
   useEffect(() => {
     params.then((p) => {
@@ -95,6 +99,11 @@ export default function DetailPenjualanPage({
     }
   };
 
+  const handleEditBarang = (detail: any) => {
+    setSelectedDetail(detail);
+    setShowModalEditBarang(true);
+  };
+
   const handleBatal = async () => {
     if (!confirm('Apakah Anda yakin ingin membatalkan penjualan ini? Semua item akan dihapus.')) return;
 
@@ -129,6 +138,15 @@ export default function DetailPenjualanPage({
   const calculateTotalCicilan = () => {
     return cicilans.reduce((sum, c) => sum + Number(c.jumlah_cicilan || 0), 0);
   };
+
+  // Permission guards - Only sales and admin can manage sales after billing
+  const { canView, canEdit, canManage } = usePermissions({
+    canView: 'sales.read',
+    canEdit: 'sales.update.all',
+    canManage: 'sales.update.all',
+  });
+
+  const isReadOnly = canView && !canManage;
 
   if (loading) {
     return (
@@ -190,6 +208,9 @@ export default function DetailPenjualanPage({
             </div>
           </div>
         </div>
+
+        {/* Read-only banner for keuangan users */}
+        {isReadOnly && <ReadOnlyBanner />}
 
         {/* Status Penerimaan - Compact Card */}
         {isBilled && (
@@ -337,12 +358,22 @@ export default function DetailPenjualanPage({
                       </td>
                       {!isBilled && (
                         <td className="px-6 py-4 text-center">
-                          <button
-                            onClick={() => handleDeleteItem(item.id)}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => handleEditBarang(item)}
+                              className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                              title="Edit barang"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteItem(item.id)}
+                              className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Hapus barang"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -410,19 +441,23 @@ export default function DetailPenjualanPage({
           <div className="p-6 bg-white flex flex-wrap gap-3 justify-center border-t border-gray-200">
             {!isBilled ? (
               <>
-                <button
-                  onClick={() => setShowModalBilling(true)}
-                  disabled={penjualan.detail_penjualan.length === 0}
-                  className="px-8 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-semibold hover:shadow-xl transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
-                >
-                  Billing Sekarang
-                </button>
-                <button
-                  onClick={handleBatal}
-                  className="px-8 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-semibold hover:shadow-xl transition-all duration-300 hover:scale-105"
-                >
-                  Batalkan
-                </button>
+                {canManage && (
+                  <button
+                    onClick={() => setShowModalBilling(true)}
+                    disabled={penjualan.detail_penjualan.length === 0}
+                    className="px-8 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-semibold hover:shadow-xl transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
+                  >
+                    Billing Sekarang
+                  </button>
+                )}
+                {canManage && (
+                  <button
+                    onClick={handleBatal}
+                    className="px-8 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-semibold hover:shadow-xl transition-all duration-300 hover:scale-105"
+                  >
+                    Batalkan
+                  </button>
+                )}
               </>
             ) : (
               <>
@@ -432,7 +467,7 @@ export default function DetailPenjualanPage({
                 >
                   Kembali
                 </button>
-                {isHutang && !isLunas && (
+                {isHutang && !isLunas && canManage && (
                   <>
                     <button
                       onClick={() => setShowModalCicilan(true)}
@@ -448,18 +483,22 @@ export default function DetailPenjualanPage({
                     </button>
                   </>
                 )}
-                <button
-                  onClick={() => setShowModalEditPenjualan(true)}
-                  className="px-6 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl font-semibold hover:shadow-xl transition-all duration-300 hover:scale-105"
-                >
-                  Edit Data
-                </button>
-                <button
-                  onClick={() => setShowModalEditBiaya(true)}
-                  className="px-6 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl font-semibold hover:shadow-xl transition-all duration-300 hover:scale-105"
-                >
-                  Edit Biaya
-                </button>
+                {canManage && (
+                  <button
+                    onClick={() => setShowModalEditPenjualan(true)}
+                    className="px-6 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl font-semibold hover:shadow-xl transition-all duration-300 hover:scale-105"
+                  >
+                    Edit Data
+                  </button>
+                )}
+                {canManage && (
+                  <button
+                    onClick={() => setShowModalEditBiaya(true)}
+                    className="px-6 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl font-semibold hover:shadow-xl transition-all duration-300 hover:scale-105"
+                  >
+                    Edit Biaya
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -523,6 +562,18 @@ export default function DetailPenjualanPage({
         onSuccess={fetchPenjualan}
         penjualanId={parseInt(id)}
       />
+
+      <ModalEditBarang
+  isOpen={showModalEditBarang}
+  onClose={() => {
+    setShowModalEditBarang(false);
+    setSelectedDetail(null);
+  }}
+  onSuccess={fetchPenjualan}
+  detail={selectedDetail}
+  penjualanId={parseInt(id)}
+  cabangId={penjualan?.pegawai?.cabang?.id}  // ✅ TAMBAHKAN INI dengan optional chaining
+/>
     </div>
   );
 }

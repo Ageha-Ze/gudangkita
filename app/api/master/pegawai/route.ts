@@ -1,12 +1,12 @@
 // app/api/master/pegawai/route.ts
-'use server';
+
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search') || '';
     const jabatan = searchParams.get('jabatan') || '';
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const body = await request.json();
 
     // Validation

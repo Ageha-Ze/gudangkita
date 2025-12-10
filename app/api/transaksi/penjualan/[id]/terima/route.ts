@@ -1,14 +1,14 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { id } = await context.params;
     const body = await request.json();
 
@@ -35,6 +35,13 @@ export async function POST(
 
     console.log('📦 Penjualan data:', penjualan);
 
+    // ✅ CRITICAL FIX: Validate billing status BEFORE allowing receipt
+    if (penjualan.status !== 'billed') {
+      return NextResponse.json({
+        error: 'Penjualan harus di-billing terlebih dahulu sebelum dapat dikonfirmasi penerimaan'
+      }, { status: 400 });
+    }
+
     // Check if already confirmed
     if (penjualan.status_diterima === 'Diterima') {
       return NextResponse.json({
@@ -52,13 +59,13 @@ export async function POST(
 
     // ✅ Step 2: Validasi stock SEMUA produk DULU
     console.log('🔍 Validating stock for', details.length, 'items...');
-    
+
     for (const detail of details) {
       if (!detail.produk_id) continue;
 
       const { data: produk, error: produkError } = await supabase
         .from('produk')
-        .select('id, nama_produk, stok')
+        .select('id, nama_produk, stok, satuan')
         .eq('id', detail.produk_id)
         .single();
 
@@ -68,14 +75,21 @@ export async function POST(
 
       const currentStok = parseFloat(produk.stok?.toString() || '0');
       const needed = parseFloat(detail.jumlah?.toString() || '0');
+      const satuan = produk.satuan?.toLowerCase() || '';
 
-      console.log(`  - ${produk.nama_produk}: stock=${currentStok}, needed=${needed}`);
+      console.log(`  - ${produk.nama_produk}: stock=${currentStok}, needed=${needed}, satuan=${satuan}`);
 
-      if (currentStok < needed) {
-        throw new Error(
-          `❌ Stock ${produk.nama_produk} tidak mencukupi!\n` +
-          `Tersedia: ${currentStok} | Dibutuhkan: ${needed}`
-        );
+      // 🔒 CONDITIONAL STOCK VALIDATION: Only validate stock for non-Kg products
+      // For Kg products, we allow billing without stock commitment
+      if (satuan !== 'kg') {
+        if (currentStok < needed) {
+          throw new Error(
+            `❌ Stock ${produk.nama_produk} tidak mencukupi!\n` +
+            `Tersedia: ${currentStok} | Dibutuhkan: ${needed}`
+          );
+        }
+      } else {
+        console.log(`  ⚠️ Skip stock validation for ${produk.nama_produk} (Kg product) - will be checked at pickup`);
       }
     }
 
@@ -100,10 +114,10 @@ export async function POST(
     for (const detail of details) {
       if (!detail.produk_id) continue;
 
-      // Get current stock
+      // Get current stock AND satuan
       const { data: produk, error: getProdukError } = await supabase
         .from('produk')
-        .select('stok, nama_produk')
+        .select('stok, nama_produk, satuan')
         .eq('id', detail.produk_id)
         .single();
 
@@ -111,14 +125,15 @@ export async function POST(
 
       const currentStok = parseFloat(produk.stok?.toString() || '0');
       const jumlahKeluar = parseFloat(detail.jumlah?.toString() || '0');
-      const newStok = currentStok - jumlahKeluar;
+      const satuan = produk.satuan?.toLowerCase() || '';
 
+      const newStok = currentStok - jumlahKeluar;
       console.log(`  📉 ${produk.nama_produk}: ${currentStok} - ${jumlahKeluar} = ${newStok}`);
 
       // Update stock produk
       const { error: updateStokError } = await supabase
         .from('produk')
-        .update({ 
+        .update({
           stok: newStok,
           updated_at: new Date().toISOString()
         })
@@ -150,6 +165,7 @@ export async function POST(
         .from('stock_barang')
         .insert({
           produk_id: detail.produk_id,
+          penjualan_id: parseInt(id),
           cabang_id: penjualan.cabang_id,
           jumlah: jumlahKeluar,
           tanggal: body.tanggal_diterima,
@@ -180,7 +196,7 @@ export async function POST(
     
     // Attempt rollback status if possible
     try {
-      const supabase = await supabaseServer();
+      const supabase = await supabaseAuthenticated();
       const { id } = await context.params;
       
       await supabase

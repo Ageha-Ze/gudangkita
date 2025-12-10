@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Plus, Minus, AlertCircle } from 'lucide-react';
+import { X, Plus, Minus, AlertCircle, Search, RefreshCw } from 'lucide-react';
 
 interface ModalManageStockProps {
   isOpen: boolean;
@@ -57,6 +57,17 @@ export default function ModalManageStock({
     keterangan: '',
   });
 
+  // Audit state
+  const [showAudit, setShowAudit] = useState(false);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditResult, setAuditResult] = useState<{
+    calculated_stock: number;
+    db_stock: number;
+    transactions: any[];
+    invalid_transactions: any[];
+    status: string;
+  } | null>(null);
+
   // Fetch master data
   useEffect(() => {
     if (isOpen) {
@@ -98,6 +109,32 @@ export default function ModalManageStock({
       setCabangs(json.data || []);
     } catch (error) {
       console.error('Error fetching cabangs:', error);
+    }
+  };
+
+  const performAudit = async () => {
+    if (!formData.produk_id || !formData.cabang_id) {
+      alert('Produk dan Cabang harus dipilih untuk audit');
+      return;
+    }
+
+    setAuditLoading(true);
+    setAuditResult(null);
+
+    try {
+      const res = await fetch(`/api/persediaan/stock-barang/debug-check?produk_id=${formData.produk_id}&cabang_id=${formData.cabang_id}`);
+      const result = await res.json();
+
+      if (res.ok) {
+        setAuditResult(result.data);
+      } else {
+        alert('Gagal mengaudit stock');
+      }
+    } catch (error) {
+      console.error('Error auditing stock:', error);
+      alert('Terjadi kesalahan dalam audit stock');
+    } finally {
+      setAuditLoading(false);
     }
   };
 
@@ -156,7 +193,7 @@ export default function ModalManageStock({
         keterangan: formData.keterangan || `Stock ${action === 'add' ? 'masuk' : action === 'remove' ? 'keluar' : 'adjustment'} manual`,
       };
 
-      // For adjust, use different endpoint
+      // For adjust, use different endpoint and include audit trail
       if (action === 'adjust') {
         endpoint = '/api/persediaan/stock-barang/adjust';
         body = {
@@ -167,6 +204,7 @@ export default function ModalManageStock({
           harga_jual: formData.harga_jual,
           persentase_harga_jual: formData.persentase,
           keterangan: formData.keterangan || 'Penyesuaian stock manual',
+          user_info: 'User Manual Adjustment', // ✅ Added for audit trail
         };
       }
 
@@ -479,6 +517,85 @@ export default function ModalManageStock({
               placeholder="Opsional - catatan tambahan"
             />
           </div>
+
+          {/* Audit Stock Section */}
+          {formData.produk_id > 0 && formData.cabang_id > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-semibold text-gray-700">
+                  🔍 Audit Stock
+                </label>
+                <button
+                  type="button"
+                  onClick={performAudit}
+                  disabled={auditLoading}
+                  className="flex items-center gap-2 px-3 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 disabled:bg-gray-400 transition-colors"
+                >
+                  {auditLoading ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Search className="w-4 h-4" />
+                  )}
+                  {auditLoading ? 'Mengecek...' : 'Periksa'}
+                </button>
+              </div>
+
+              {auditResult && (
+                <div className={`p-4 rounded-xl border-2 space-y-3 ${
+                  auditResult.status === 'INKONSISTEN' ? 'bg-red-50 border-red-300' :
+                  auditResult.invalid_transactions.length > 0 ? 'bg-yellow-50 border-yellow-300' :
+                  'bg-green-50 border-green-300'
+                }`}>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Stock Bersesuaian:</p>
+                      <p className="text-lg font-bold text-blue-700">{auditResult.calculated_stock.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Stock di Database:</p>
+                      <p className="text-lg font-bold text-blue-700">{auditResult.db_stock.toFixed(2)}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                      auditResult.status === 'KONSISTEN' ? 'bg-green-100 text-green-800' :
+                      auditResult.status === 'INKONSISTEN' ? 'bg-red-100 text-red-800' :
+                      'bg-yellow-100 text-yellow-800'
+                    }`}>
+                      {auditResult.status}
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      Selisih: {(auditResult.calculated_stock - auditResult.db_stock).toFixed(2)}
+                    </div>
+                  </div>
+
+                  {auditResult.invalid_transactions.length > 0 && (
+                    <div className="bg-red-100 p-3 rounded-lg border border-red-200">
+                      <p className="text-sm font-semibold text-red-800 mb-2">
+                        ⚠️ Transaksi Tidak Valid: {auditResult.invalid_transactions.length}
+                      </p>
+                      <div className="max-h-32 overflow-y-auto text-xs text-red-700 font-mono">
+                        {auditResult.invalid_transactions.map((t: any, i: number) => (
+                          <div key={i} className="mb-1">
+                            ID {t.id}: {t.reason}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="text-xs text-gray-500 bg-gray-100 p-2 rounded">
+                    Total transaksi yang diperiksa: {auditResult.transactions.length}
+                  </div>
+                </div>
+              )}
+
+              <div className="text-xs text-gray-500 p-2 bg-gray-50 rounded">
+                Audit akan memeriksa konsistensi stock dengan menghitung ulang dari transaksi dan membandingkan dengan data di database.
+              </div>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex gap-3 pt-4">

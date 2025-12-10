@@ -2,13 +2,13 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import { calculatePembelianTotals } from '@/lib/transaksi/calculatePembelianTotals';
 
 // GET - List semua pembelian
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const searchParams = request.nextUrl.searchParams;
 
     const search = searchParams.get('search') || '';
@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
 // POST - Create pembelian baru
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const body = await request.json();
 
     console.log('🛒 Creating pembelian:', body);

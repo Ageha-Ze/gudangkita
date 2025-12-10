@@ -1,14 +1,11 @@
 // app/api/master/produk/route.ts
-'use server';
-
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import { NextRequest, NextResponse } from 'next/server';
-
 
 // GET - List all produk
 export async function GET(request: NextRequest) {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search') || '';
     const page = parseInt(searchParams.get('page') || '1');
@@ -53,7 +50,7 @@ export async function GET(request: NextRequest) {
 // POST - Create new produk
 export async function POST(request: NextRequest) {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated(); // ✅ Added await
     const body = await request.json();
 
     const { data, error } = await supabase

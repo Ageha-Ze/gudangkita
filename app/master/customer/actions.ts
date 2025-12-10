@@ -3,7 +3,7 @@
 // ============================================
 'use server';
 
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import { revalidatePath } from 'next/cache';
 import { CustomerFormData } from '@/types/customer';
 
@@ -17,7 +17,7 @@ type ActionResult<T = any> = {
 // Generate kode customer otomatis
 async function generateKodeCustomer(): Promise<string> {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
 
     const { data, error } = await supabase
       .from('customer')
@@ -64,7 +64,7 @@ async function generateKodeCustomer(): Promise<string> {
 // Get all customers dengan relasi cabang
 export async function getCustomers(): Promise<ActionResult> {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
 
     const { data, error } = await supabase
       .from('customer')
@@ -118,7 +118,7 @@ export async function getCustomers(): Promise<ActionResult> {
 // Get single customer by ID
 export async function getCustomerById(id: number): Promise<ActionResult> {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
 
     const { data, error } = await supabase
       .from('customer')
@@ -166,7 +166,7 @@ export async function getCustomerById(id: number): Promise<ActionResult> {
 // Create new customer
 export async function createCustomer(formData: CustomerFormData): Promise<ActionResult> {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
 
     // Generate kode customer jika tidak ada
     const kodeCustomer = formData.kode_customer || await generateKodeCustomer();
@@ -211,7 +211,7 @@ export async function createCustomer(formData: CustomerFormData): Promise<Action
 // Update customer
 export async function updateCustomer(id: number, formData: CustomerFormData): Promise<ActionResult> {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
 
     const { data, error } = await supabase
       .from('customer')
@@ -253,7 +253,7 @@ export async function updateCustomer(id: number, formData: CustomerFormData): Pr
 // Delete customer
 export async function deleteCustomer(id: number): Promise<ActionResult> {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
 
     const { error } = await supabase
       .from('customer')
@@ -287,7 +287,7 @@ export async function deleteCustomer(id: number): Promise<ActionResult> {
 // Get all cabang for dropdown
 export async function getCabangList(): Promise<ActionResult> {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
 
     const { data, error } = await supabase
       .from('cabang')

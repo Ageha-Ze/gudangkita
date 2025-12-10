@@ -2,8 +2,13 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import { calculatePembelianTotals } from '@/lib/transaksi/calculatePembelianTotals';
+import { 
+  validateStockDeletion, 
+  restoreStock, 
+  logAuditTrail 
+} from '@/lib/helpers/stockSafety';
 
 // GET - Detail pembelian by ID
 export async function GET(
@@ -11,7 +16,7 @@ export async function GET(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { id } = await context.params;
 
     console.log('Fetching pembelian with id:', id);
@@ -19,7 +24,8 @@ export async function GET(
     // Validasi ID
     if (!id || id === 'undefined') {
       return NextResponse.json(
-        { error: 'ID tidak valid' },
+        { success: false, // ✅ Tambahkan
+          error: 'ID tidak valid' },
         { status: 400 }
       );
     }
@@ -124,7 +130,7 @@ export async function GET(
 // 🔍 Helper: Check if purchase stock has been consumed by sales
 async function checkPurchaseStockConsumed(purchaseId: number) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
 
     // Step 1: Get purchased items and quantities
     const { data: purchaseDetails } = await supabase
@@ -185,7 +191,7 @@ export async function PATCH(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { id } = await context.params;
     const body = await request.json();
 
@@ -227,142 +233,232 @@ export async function PATCH(
   }
 }
 
-// DELETE - Delete pembelian dan semua data terkait dengan STOCK SAFETY
+// ============================================================
+// ✅ CLEAN DELETE PEMBELIAN with Helper Functions
+// ============================================================
 export async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
+  const startTime = Date.now();
+  
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { id } = await context.params;
 
-    console.log('🔒 Checking purchase safety before delete:', id);
-
-    // Validasi ID
     if (!id || id === 'undefined') {
       return NextResponse.json(
-        { error: 'ID tidak valid' },
+        { success: false, error: 'ID tidak valid' },
         { status: 400 }
       );
     }
 
-    // 🔍 STEP 1: VERIFY STOCK RECEIVED HASN'T BEEN CONSUMED
-    const purchaseId = parseInt(id);
-    const consumedStock = await checkPurchaseStockConsumed(purchaseId);
+    console.log('🗑️ DELETE PEMBELIAN ID:', id);
 
-    if (consumedStock > 0) {
-      console.log(`❌ BLOCKED: Purchase ${purchaseId} has ${consumedStock} units consumed`);
+    // ============================================================
+    // STEP 1: Get pembelian data
+    // ============================================================
+    const { data: pembelian, error: getPembelianError } = await supabase
+      .from('transaksi_pembelian')
+      .select(`
+        id, nota_supplier, tanggal, total, 
+        status_barang, jenis_pembayaran,
+        cabang_id, suplier_id
+      `)
+      .eq('id', id)
+      .single();
+
+    if (getPembelianError || !pembelian) {
+      return NextResponse.json(
+        { success: false, error: 'Data pembelian tidak ditemukan' },
+        { status: 404 }
+      );
+    }
+
+    console.log('📦 Pembelian:', pembelian.nota_supplier);
+    console.log('📊 Status Barang:', pembelian.status_barang);
+
+    // ============================================================
+    // STEP 2: Validate Stock Safety
+    // ============================================================
+    const stockValidation = await validateStockDeletion('pembelian', parseInt(id));
+    
+    if (!stockValidation.safe) {
       return NextResponse.json({
-        error: 'Cannot delete data, because it will result in negative stock. Please delete the sales/consignment data first.'
+        success: false,
+        error: stockValidation.message
       }, { status: 400 });
     }
 
-    console.log('✅ SAFE: No stock consumption detected, proceeding with deletion and kas return...');
+    // ============================================================
+    // STEP 3: Restore Stock (Remove from inventory)
+    // ============================================================
+    const stockResult = await restoreStock('pembelian', parseInt(id));
+    
+    console.log(stockResult.restored 
+      ? `✅ Stock removed: ${stockResult.count} products`
+      : 'ℹ️ No stock to restore'
+    );
 
-    // 1. Get all cicilan untuk kembalikan kas
+    // ============================================================
+    // STEP 4: Restore Kas from Cicilan
+    // ============================================================
     const { data: cicilanList } = await supabase
       .from('cicilan_pembelian')
-      .select('id, jumlah_cicilan, rekening')
+      .select('id, jumlah_cicilan, rekening, kas_id')
       .eq('pembelian_id', id);
 
-    // Kembalikan saldo kas untuk setiap cicilan
+    const kasRestorations = [];
+    
     if (cicilanList && cicilanList.length > 0) {
+      console.log('💰 Restoring payments to kas...');
+      
       for (const cicilan of cicilanList) {
-        if (!cicilan.rekening) continue;
+        // Use kas_id if available, otherwise try to find by rekening name
+        let kasId = cicilan.kas_id;
         
-        const { data: kas } = await supabase
-          .from('kas')
-          .select('*')
-          .eq('nama_kas', cicilan.rekening)
-          .single();
-
-        if (kas) {
-          const kasSaldo = parseFloat(kas.saldo.toString());
-          const jumlahKembali = parseFloat(cicilan.jumlah_cicilan.toString());
-          const newSaldo = kasSaldo + jumlahKembali;
-
-          await supabase
+        if (!kasId && cicilan.rekening) {
+          const { data: kas } = await supabase
             .from('kas')
-            .update({ saldo: newSaldo })
-            .eq('id', kas.id);
+            .select('id')
+            .eq('nama_kas', cicilan.rekening)
+            .single();
+          
+          kasId = kas?.id;
+        }
 
-          console.log(`Kas ${kas.nama_kas} dikembalikan: ${kasSaldo} + ${jumlahKembali} = ${newSaldo}`);
+        if (kasId) {
+          const jumlahKembali = parseFloat(cicilan.jumlah_cicilan.toString());
+          
+          // Get kas data
+          const { data: kas } = await supabase
+            .from('kas')
+            .select('saldo, nama_kas')
+            .eq('id', kasId)
+            .single();
 
-          // Insert transaksi kas (kredit = masuk/dikembalikan)
-          await supabase
-            .from('transaksi_kas')
-            .insert({
-              kas_id: kas.id,
-              tanggal_transaksi: new Date().toISOString().split('T')[0],
-              debit: 0,
-              kredit: jumlahKembali,
-              keterangan: `Pembatalan pembelian (ID: ${id})`
+          if (kas) {
+            const kasSaldo = parseFloat(kas.saldo.toString());
+            const newSaldo = kasSaldo + jumlahKembali;
+
+            // Update kas
+            await supabase
+              .from('kas')
+              .update({ saldo: newSaldo })
+              .eq('id', kasId);
+
+            console.log(`  💵 Kas ${kas.nama_kas}: ${kasSaldo} + ${jumlahKembali} = ${newSaldo}`);
+
+            // Delete transaksi_kas
+            await supabase
+              .from('transaksi_kas')
+              .delete()
+              .eq('kas_id', kasId)
+              .ilike('keterangan', `%${pembelian.nota_supplier}%`);
+
+            kasRestorations.push({
+              kas: kas.nama_kas,
+              amount: jumlahKembali
             });
+          }
         }
       }
     }
 
-    // 2. Hapus cicilan_pembelian
-    const { error: cicilanError } = await supabase
+    // ============================================================
+    // STEP 5: Delete Cicilan
+    // ============================================================
+    await supabase
       .from('cicilan_pembelian')
       .delete()
       .eq('pembelian_id', id);
 
-    if (cicilanError) {
-      console.error('Error deleting cicilan:', cicilanError);
-      throw cicilanError;
-    }
-
-    // 3. Hapus hutang_pembelian
-    const { error: hutangError } = await supabase
+    // ============================================================
+    // STEP 6: Delete Hutang
+    // ============================================================
+    await supabase
       .from('hutang_pembelian')
       .delete()
       .eq('pembelian_id', id);
 
-    if (hutangError) {
-      console.error('Error deleting hutang:', hutangError);
-      throw hutangError;
-    }
+    // ============================================================
+    // STEP 7: Log Audit Trail
+    // ============================================================
+    const userId = request.headers.get('x-user-id');
+    await logAuditTrail(
+      'DELETE',
+      'transaksi_pembelian',
+      parseInt(id),
+      pembelian,
+      undefined,
+      userId ? parseInt(userId) : undefined,
+      request.headers.get('x-forwarded-for') || undefined
+    );
 
-    // 4. Hapus detail_pembelian
-    const { error: detailError } = await supabase
+    // ============================================================
+    // STEP 8: Delete Detail Pembelian
+    // ============================================================
+    await supabase
       .from('detail_pembelian')
       .delete()
       .eq('pembelian_id', id);
 
-    if (detailError) {
-      console.error('Error deleting details:', detailError);
-      throw detailError;
-    }
-
-    // 5. Terakhir, hapus transaksi_pembelian
-    const { error } = await supabase
+    // ============================================================
+    // STEP 9: Delete Transaksi Pembelian
+    // ============================================================
+    const { error: deleteError } = await supabase
       .from('transaksi_pembelian')
       .delete()
       .eq('id', id);
 
-    if (error) {
-      console.error('Error deleting pembelian:', error);
-      throw error;
+    if (deleteError) {
+      throw deleteError;
     }
 
-    console.log('Successfully deleted pembelian and all related data');
-    console.log(`Returned ${cicilanList?.length || 0} payments to kas`);
-    
-    return NextResponse.json({ 
-      message: 'Data berhasil dihapus dan saldo kas dikembalikan',
+    // ============================================================
+    // STEP 10: Build Response
+    // ============================================================
+    const executionTime = Date.now() - startTime;
+    const actions: string[] = [];
+
+    if (stockResult.restored) actions.push(`stock dikembalikan (${stockResult.count} items)`);
+    if (kasRestorations.length > 0) {
+      const totalKas = kasRestorations.reduce((sum, k) => sum + k.amount, 0);
+      actions.push(`saldo kas dikembalikan (Rp ${totalKas})`);
+    }
+
+    const message = actions.length > 0
+      ? `Pembelian berhasil dihapus dan ${actions.join(', ')}`
+      : 'Pembelian berhasil dihapus';
+
+    console.log(`✅ DELETE SUKSES! (${executionTime}ms)`);
+
+    return NextResponse.json({
+      success: true,
+      message: message,
       deleted: {
         pembelian_id: id,
-        cicilan: cicilanList?.length || 0,
-        hutang: true,
-        detail: true,
-        kas_returned: true
+        nota: pembelian.nota_supplier,
+        stock_restored: stockResult.restored,
+        stock_items: stockResult.count,
+        kas_restorations: kasRestorations.length,
+        execution_time_ms: executionTime
+      },
+      details: {
+        stock_products: stockResult.products || [],
+        kas_details: kasRestorations,
+        validation: stockValidation
       }
     });
+
   } catch (error: any) {
-    console.error('Exception in DELETE:', error);
+    console.error('❌ ERROR DELETE PEMBELIAN:', error);
+    
     return NextResponse.json(
-      { error: error.message },
+      { 
+        success: false,
+        error: error.message || 'Gagal menghapus pembelian' 
+      },
       { status: 500 }
     );
   }

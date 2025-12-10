@@ -1,13 +1,12 @@
 // app/api/master/cabang/route.ts
-'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer'; // ✅ Import yang benar
 
 // GET - List all cabang
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search') || '';
     const page = parseInt(searchParams.get('page') || '1');
@@ -53,7 +52,7 @@ export async function GET(request: NextRequest) {
 // POST - Create new cabang
 export async function POST(request: NextRequest) {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const body = await request.json();
 
     const { data, error } = await supabase
@@ -64,9 +63,9 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
-    return NextResponse.json({ 
-      data, 
-      message: 'Cabang berhasil ditambahkan' 
+    return NextResponse.json({
+      data,
+      message: 'Cabang berhasil ditambahkan'
     });
   } catch (error: any) {
     return NextResponse.json(

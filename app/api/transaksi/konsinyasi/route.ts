@@ -1,10 +1,10 @@
 // app/api/transaksi/konsinyasi/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -93,7 +93,7 @@ export async function PUT(request: NextRequest) {
 // GET - List transaksi konsinyasi
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { searchParams } = new URL(request.url);
     
     const search = searchParams.get('search') || '';
@@ -172,7 +172,7 @@ export async function GET(request: NextRequest) {
 // POST - Create transaksi konsinyasi
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const body = await request.json();
 
     console.log('📦 Creating konsinyasi:', body);
@@ -332,7 +332,7 @@ export async function POST(request: NextRequest) {
 // DELETE - Hapus transaksi konsinyasi
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 

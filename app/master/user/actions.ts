@@ -1,6 +1,6 @@
 'use server';
 
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import { revalidatePath } from 'next/cache';
 
 type ActionResult = {
@@ -10,9 +10,17 @@ type ActionResult = {
   data?: any;
 };
 
+// Definisi UserLevel sesuai dengan enum di database
+type UserLevel = 'super_admin' | 'admin' | 'keuangan' | 'kasir' | 'gudang' | 'sales';
+
+// Fungsi validasi level
+function isValidUserLevel(level: string): level is UserLevel {
+  return ['super_admin', 'admin', 'keuangan', 'kasir', 'gudang', 'sales'].includes(level);
+}
+
 export async function getUsers(): Promise<any[]> {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     const { data, error } = await supabase
       .from('users')
@@ -37,7 +45,7 @@ export async function addUser(formData: {
   level: string;
 }): Promise<ActionResult> {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     // Validasi input
     if (!formData.username || !formData.password) {
@@ -45,6 +53,15 @@ export async function addUser(formData: {
         success: false,
         error: 'Username dan password harus diisi',
         message: 'Data tidak lengkap'
+      };
+    }
+
+    // Validasi level
+    if (!isValidUserLevel(formData.level)) {
+      return {
+        success: false,
+        error: `Level tidak valid. Pilih salah satu: super_admin, admin, keuangan, kasir, gudang, sales`,
+        message: 'Level user tidak valid'
       };
     }
 
@@ -88,7 +105,7 @@ export async function updateUser(
   }
 ): Promise<ActionResult> {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     // Validasi input
     if (!formData.username) {
@@ -96,6 +113,15 @@ export async function updateUser(
         success: false,
         error: 'Username harus diisi',
         message: 'Data tidak lengkap'
+      };
+    }
+
+    // Validasi level
+    if (!isValidUserLevel(formData.level)) {
+      return {
+        success: false,
+        error: `Level tidak valid. Pilih salah satu: super_admin, admin, keuangan, kasir, gudang, sales`,
+        message: 'Level user tidak valid'
       };
     }
 
@@ -142,7 +168,7 @@ export async function updateUser(
 
 export async function deleteUser(id: number): Promise<ActionResult> {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     // Optional: Check if user is being used in other tables
     // Add your business logic here if needed

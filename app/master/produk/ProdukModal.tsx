@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Modal from '@/components/Modal';
 import { ProdukData } from '@/types/produk';
 import { addProduk, updateProduk } from './actions';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { AlertCircle, Loader2, Info, Droplets } from 'lucide-react';
 
 interface ProdukModalProps {
   isOpen: boolean;
@@ -24,6 +24,8 @@ export default function ProdukModal({ isOpen, onClose, produk, onSuccess }: Prod
     stok: '',
     satuan: '',
     is_jerigen: false,
+    density_kg_per_liter: '1.0', // 🆕 Default density
+    allow_manual_conversion: false, // 🆕
   });
 
   useEffect(() => {
@@ -36,6 +38,8 @@ export default function ProdukModal({ isOpen, onClose, produk, onSuccess }: Prod
         stok: produk.stok.toString(),
         satuan: produk.satuan,
         is_jerigen: produk.is_jerigen ?? false,
+        density_kg_per_liter: produk.density_kg_per_liter?.toString() || '1.0', // 🆕
+        allow_manual_conversion: produk.allow_manual_conversion ?? false, // 🆕
       });
     } else {
       setFormData({
@@ -46,6 +50,8 @@ export default function ProdukModal({ isOpen, onClose, produk, onSuccess }: Prod
         stok: '',
         satuan: '',
         is_jerigen: false,
+        density_kg_per_liter: '1.0',
+        allow_manual_conversion: false,
       });
     }
     setError(null);
@@ -63,6 +69,27 @@ export default function ProdukModal({ isOpen, onClose, produk, onSuccess }: Prod
     return `${prefix}${timestamp}`;
   };
 
+  // 🆕 Auto-suggest density based on product name
+  const suggestDensity = (namaProduk: string): number => {
+    const name = namaProduk.toLowerCase();
+    
+    if (name.includes('air') || name.includes('water')) return 1.0;
+    if (name.includes('madu') || name.includes('honey') || name.includes('kelulut')) return 1.4;
+    if (name.includes('minyak') || name.includes('oil') || name.includes('zaitun') || name.includes('olive')) return 0.92;
+    if (name.includes('susu') || name.includes('milk')) return 1.03;
+    
+    return 1.0; // default
+  };
+
+  // 🆕 Calculate preview conversion
+  const calculateConversionPreview = (): string => {
+    const density = parseFloat(formData.density_kg_per_liter);
+    if (isNaN(density) || density <= 0) return '10 KG → ? ML';
+    
+    const ml = (10 / density) * 1000;
+    return `10 KG → ${ml.toFixed(0)} ML`;
+  };
+
   const handleSubmit = async () => {
     setError(null);
     
@@ -74,6 +101,13 @@ export default function ProdukModal({ isOpen, onClose, produk, onSuccess }: Prod
 
     if (!formData.satuan) {
       setError('Satuan harus dipilih');
+      return;
+    }
+
+    // 🆕 Validate density for KG products
+    const density = parseFloat(formData.density_kg_per_liter);
+    if (formData.satuan === 'Kg' && (isNaN(density) || density <= 0)) {
+      setError('Density harus diisi dengan nilai positif untuk produk KG');
       return;
     }
 
@@ -94,6 +128,8 @@ export default function ProdukModal({ isOpen, onClose, produk, onSuccess }: Prod
         stok: parseFloat(formData.stok) || 0,
         satuan: formData.satuan,
         is_jerigen: !!formData.is_jerigen,
+        density_kg_per_liter: parseFloat(formData.density_kg_per_liter) || 1.0, // 🆕
+        allow_manual_conversion: !!formData.allow_manual_conversion, // 🆕
       };
 
       let result;
@@ -126,9 +162,28 @@ export default function ProdukModal({ isOpen, onClose, produk, onSuccess }: Prod
         stok: '',
         satuan: '',
         is_jerigen: false,
+        density_kg_per_liter: '1.0',
+        allow_manual_conversion: false,
       });
       setError(null);
       onClose();
+    }
+  };
+
+  // 🆕 Handle name change with auto-suggest
+  const handleNameChange = (value: string) => {
+    setFormData({ ...formData, nama_produk: value });
+    
+    // Auto-suggest density if it's still default
+    if (!produk && formData.density_kg_per_liter === '1.0') {
+      const suggested = suggestDensity(value);
+      if (suggested !== 1.0) {
+        setFormData(prev => ({ 
+          ...prev, 
+          nama_produk: value,
+          density_kg_per_liter: suggested.toString() 
+        }));
+      }
     }
   };
 
@@ -181,7 +236,7 @@ export default function ProdukModal({ isOpen, onClose, produk, onSuccess }: Prod
             type="text"
             className="w-full px-4 py-2 bg-blue-50 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
             value={formData.nama_produk}
-            onChange={(e) => setFormData({ ...formData, nama_produk: e.target.value })}
+            onChange={(e) => handleNameChange(e.target.value)}
             placeholder="Contoh: Madu Hutan Liar"
             disabled={isLoading}
             required
@@ -224,11 +279,106 @@ export default function ProdukModal({ isOpen, onClose, produk, onSuccess }: Prod
                 className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
               />
               <label htmlFor="is_jerigen" className="ml-2 text-gray-700">
-                Jerigen
+                Bundles (Jerigen, Drum, Box, dll)
               </label>
             </div>
           </div>
         </div>
+
+        {/* 🆕 DENSITY SECTION - Only show for KG products */}
+        {formData.satuan === 'Kg' && (
+          <div className="bg-gradient-to-r from-cyan-50 to-blue-50 border border-cyan-200 rounded-lg p-4 space-y-3">
+            <div className="flex items-start gap-2">
+              <Droplets className="w-5 h-5 text-cyan-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <label className="block text-gray-800 font-semibold mb-1">
+                  Density (kg/L) <span className="text-red-500">*</span>
+                </label>
+                <p className="text-xs text-gray-600 mb-2">
+                  Untuk konversi otomatis KG → ML saat unloading
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  value={formData.density_kg_per_liter}
+                  onChange={(e) => setFormData({ ...formData, density_kg_per_liter: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-cyan-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 bg-white"
+                  placeholder="1.0"
+                  disabled={isLoading}
+                  required={formData.satuan === 'Kg'}
+                />
+              </div>
+              <div className="flex items-center">
+                <div className="text-xs bg-white border border-cyan-200 rounded-lg px-3 py-2 w-full">
+                  <span className="text-gray-500">Preview:</span><br/>
+                  <span className="font-mono text-cyan-700 font-semibold">
+                    {calculateConversionPreview()}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Presets */}
+            <div className="flex flex-wrap gap-2 pt-2 border-t border-cyan-200">
+              <p className="text-xs text-gray-600 w-full mb-1">Quick Presets:</p>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, density_kg_per_liter: '1.0' })}
+                className="text-xs px-2 py-1 bg-white border border-cyan-300 rounded hover:bg-cyan-50 transition"
+                disabled={isLoading}
+              >
+                Air (1.0)
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, density_kg_per_liter: '1.4' })}
+                className="text-xs px-2 py-1 bg-white border border-cyan-300 rounded hover:bg-cyan-50 transition"
+                disabled={isLoading}
+              >
+                Madu (1.4)
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, density_kg_per_liter: '0.92' })}
+                className="text-xs px-2 py-1 bg-white border border-cyan-300 rounded hover:bg-cyan-50 transition"
+                disabled={isLoading}
+              >
+                Minyak (0.92)
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, density_kg_per_liter: '1.03' })}
+                className="text-xs px-2 py-1 bg-white border border-cyan-300 rounded hover:bg-cyan-50 transition"
+                disabled={isLoading}
+              >
+                Susu (1.03)
+              </button>
+            </div>
+
+            {/* Info box */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+              <div className="flex items-start gap-2">
+                <Info className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-blue-800">
+                  <strong>Contoh penggunaan:</strong><br/>
+                  Unloading 10 KG madu (density {formData.density_kg_per_liter}) akan otomatis menjadi{' '}
+                  <strong className="text-blue-900">
+                    {(() => {
+                      const d = parseFloat(formData.density_kg_per_liter);
+                      return isNaN(d) || d <= 0 ? '?' : ((10 / d) * 1000).toFixed(0);
+                    })()} ML
+                  </strong> produk kiloan
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Grid 2 Kolom: HPP & Harga Jual */}
         <div className="grid grid-cols-2 gap-4">

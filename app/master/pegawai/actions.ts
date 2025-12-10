@@ -1,6 +1,6 @@
 'use server';
 
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import { revalidatePath } from 'next/cache';
 
 // Define return types for consistency
@@ -14,7 +14,7 @@ type ActionResult = {
 
 export async function getPegawai(): Promise<ActionResult> {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     const { data, error } = await supabase
       .from('pegawai')
@@ -57,7 +57,7 @@ export async function getPegawai(): Promise<ActionResult> {
 
 export async function getCabangList(): Promise<ActionResult> {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     const { data, error } = await supabase
       .from('cabang')
@@ -89,7 +89,7 @@ export async function getCabangList(): Promise<ActionResult> {
 
 export async function getUserList(): Promise<ActionResult> {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     const { data, error } = await supabase
       .from('users')
@@ -121,7 +121,7 @@ export async function getUserList(): Promise<ActionResult> {
 
 export async function addPegawai(formData: any): Promise<ActionResult> {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     const { data, error } = await supabase
       .from('pegawai')
@@ -156,7 +156,7 @@ export async function addPegawai(formData: any): Promise<ActionResult> {
 
 export async function updatePegawai(id: number, formData: any): Promise<ActionResult> {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     const { data, error } = await supabase
       .from('pegawai')
@@ -192,7 +192,7 @@ export async function updatePegawai(id: number, formData: any): Promise<ActionRe
 
 export async function deletePegawai(id: number): Promise<ActionResult> {
   try {
-    const supabase = supabaseServer();
+    const supabase = await supabaseAuthenticated();
     
     const { error } = await supabase
       .from('pegawai')

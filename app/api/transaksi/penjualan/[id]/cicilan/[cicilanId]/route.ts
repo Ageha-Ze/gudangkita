@@ -2,7 +2,7 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 // PUT - Update cicilan
 export async function PUT(
@@ -10,7 +10,7 @@ export async function PUT(
   context: { params: Promise<{ id: string; cicilanId: string }> }
 ) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { id, cicilanId } = await context.params;
     const body = await request.json();
 
@@ -221,7 +221,7 @@ export async function DELETE(
   context: { params: Promise<{ id: string; cicilanId: string }> }
 ) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { id, cicilanId } = await context.params;
 
     console.log('🗑️ Deleting cicilan:', cicilanId);

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Modal from '@/components/Modal';
 import { UserData } from '@/types/user';
 import { addUser, updateUser } from './actions';
-import { User, Lock, Shield } from 'lucide-react'; // Added icons for better UX
+import { User, Lock, Shield } from 'lucide-react';
 
 interface UserModalProps {
   isOpen: boolean;
@@ -13,69 +13,114 @@ interface UserModalProps {
   onSuccess: () => void;
 }
 
+// Definisi UserLevel yang valid
+type UserLevel = 'super_admin' | 'admin' | 'keuangan' | 'kasir' | 'gudang' | 'sales';
+
+// Data untuk select options
+const USER_LEVELS: { value: UserLevel; label: string }[] = [
+  { value: 'super_admin', label: 'Super Admin' },
+  { value: 'admin', label: 'Admin' },
+  { value: 'keuangan', label: 'Keuangan' },
+  { value: 'kasir', label: 'Kasir' },
+  { value: 'gudang', label: 'Gudang' },
+  { value: 'sales', label: 'Sales' },
+];
+
 export default function UserModal({ isOpen, onClose, user, onSuccess }: UserModalProps) {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    username: string;
+    password: string;
+    level: UserLevel;
+    updatePassword: boolean;
+  }>({
     username: '',
     password: '',
-    level: 'user',
+    level: 'kasir',
     updatePassword: false,
   });
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (user) {
       setFormData({
         username: user.username,
         password: '',
-        level: user.level,
+        level: user.level as UserLevel,
         updatePassword: false,
       });
     } else {
       setFormData({
         username: '',
         password: '',
-        level: 'user',
+        level: 'kasir',
         updatePassword: false,
       });
     }
-  }, [user]);
+  }, [user, isOpen]);
 
   const handleSubmit = async () => {
-    if (!formData.username) {
+    // Validasi username
+    if (!formData.username.trim()) {
       alert('Username harus diisi');
       return;
     }
 
-    if (!user && !formData.password) {
-      alert('Password harus diisi');
+    // Validasi password untuk user baru
+    if (!user && !formData.password.trim()) {
+      alert('Password harus diisi untuk user baru');
       return;
     }
 
-    if (user && formData.updatePassword && !formData.password) {
-      alert('Password harus diisi');
+    // Validasi password untuk update
+    if (user && formData.updatePassword && !formData.password.trim()) {
+      alert('Password harus diisi jika ingin mengupdate password');
       return;
     }
 
-    const data = {
-      username: formData.username,
-      password: formData.password || undefined,
-      level: formData.level,
-    };
+    setIsSubmitting(true);
 
-    let result;
-    if (user) {
-      if (!formData.updatePassword) {
-        delete data.password;
+    try {
+      const data: {
+        username: string;
+        password?: string;
+        level: string;
+      } = {
+        username: formData.username.trim(),
+        level: formData.level,
+      };
+
+      // Tambahkan password jika diperlukan
+      if (!user || formData.updatePassword) {
+        data.password = formData.password;
       }
-      result = await updateUser(user.id, data);
-    } else {
-      result = await addUser(data as any);
-    }
 
-    if (result.success) {
-      onSuccess();
-      onClose();
-    } else {
-      alert(result.error || 'Terjadi kesalahan');
+      let result;
+      if (user) {
+        result = await updateUser(user.id, data);
+      } else {
+        result = await addUser(data as { username: string; password: string; level: string });
+      }
+
+      if (result.success) {
+        alert(result.message || 'Berhasil menyimpan data');
+        onSuccess();
+        onClose();
+        // Reset form
+        setFormData({
+          username: '',
+          password: '',
+          level: 'kasir',
+          updatePassword: false,
+        });
+      } else {
+        alert(result.error || result.message || 'Terjadi kesalahan');
+      }
+    } catch (error) {
+      console.error('Error submitting form:', error);
+      alert('Terjadi kesalahan saat menyimpan data');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -102,7 +147,9 @@ export default function UserModal({ isOpen, onClose, user, onSuccess }: UserModa
         )}
 
         <div className="relative">
-          <label className="block text-gray-700 font-medium mb-2">Username</label>
+          <label className="block text-gray-700 font-medium mb-2">
+            Username <span className="text-red-500">*</span>
+          </label>
           <div className="relative">
             <User size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             <input
@@ -110,13 +157,16 @@ export default function UserModal({ isOpen, onClose, user, onSuccess }: UserModa
               className="w-full pl-10 pr-4 py-3 bg-blue-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all duration-200 hover:bg-blue-100"
               value={formData.username}
               onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-              placeholder="Enter username"
+              placeholder="Masukkan username"
+              disabled={isSubmitting}
             />
           </div>
         </div>
 
         <div className="relative">
-          <label className="block text-gray-700 font-medium mb-2">Password</label>
+          <label className="block text-gray-700 font-medium mb-2">
+            Password {!user && <span className="text-red-500">*</span>}
+          </label>
           <div className="relative">
             <Lock size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             <input
@@ -124,7 +174,8 @@ export default function UserModal({ isOpen, onClose, user, onSuccess }: UserModa
               className="w-full pl-10 pr-4 py-3 bg-blue-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all duration-200 hover:bg-blue-100"
               value={formData.password}
               onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              placeholder="Enter password"
+              placeholder={user ? "Kosongkan jika tidak ingin mengubah" : "Masukkan password"}
+              disabled={isSubmitting || (!!user && !formData.updatePassword)}
             />
           </div>
         </div>
@@ -136,32 +187,35 @@ export default function UserModal({ isOpen, onClose, user, onSuccess }: UserModa
               className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
               checked={formData.updatePassword}
               onChange={(e) =>
-                setFormData({ ...formData, updatePassword: e.target.checked })
+                setFormData({ ...formData, updatePassword: e.target.checked, password: '' })
               }
+              disabled={isSubmitting}
             />
             <span className="text-sm text-gray-700 font-medium">
-              Check this box if you want to update your password
+              Centang jika ingin mengubah password
             </span>
           </div>
         )}
 
         <div className="relative">
-          <label className="block text-gray-700 font-medium mb-2">Level Akses</label>
+          <label className="block text-gray-700 font-medium mb-2">
+            Level Akses <span className="text-red-500">*</span>
+          </label>
           <div className="relative">
-            <Shield size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <Shield size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 z-10" />
             <select
-              className="w-full pl-10 pr-4 py-3 bg-blue-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all duration-200 hover:bg-blue-100 appearance-none"
+              className="w-full pl-10 pr-10 py-3 bg-blue-50 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all duration-200 hover:bg-blue-100 appearance-none"
               value={formData.level}
-              onChange={(e) => setFormData({ ...formData, level: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, level: e.target.value as UserLevel })}
+              disabled={isSubmitting}
             >
-              <option value="super_admin">Super Admin</option>
-              <option value="admin">Admin</option>
-              <option value="keuangan">Keuangan</option>
-              <option value="kasir">Kasir</option>
-              <option value="gudang">Gudang</option>
-              <option value="sales">Sales</option>
+              {USER_LEVELS.map((level) => (
+                <option key={level.value} value={level.value}>
+                  {level.label}
+                </option>
+              ))}
             </select>
-            <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+            <div className="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none">
               <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
@@ -172,13 +226,15 @@ export default function UserModal({ isOpen, onClose, user, onSuccess }: UserModa
         <div className="flex gap-4 pt-6">
           <button
             onClick={handleSubmit}
-            className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 font-semibold"
+            disabled={isSubmitting}
+            className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
           >
-            Simpan
+            {isSubmitting ? 'Menyimpan...' : 'Simpan'}
           </button>
           <button
             onClick={onClose}
-            className="flex-1 bg-gradient-to-r from-red-500 to-red-600 text-white py-3 rounded-lg hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 font-semibold"
+            disabled={isSubmitting}
+            className="flex-1 bg-gradient-to-r from-red-500 to-red-600 text-white py-3 rounded-lg hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
           >
             Batal
           </button>

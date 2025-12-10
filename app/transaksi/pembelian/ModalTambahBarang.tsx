@@ -90,7 +90,12 @@ export default function ModalTambahBarang({ isOpen, onClose, onSuccess, pembelia
         onSuccess(json?.pembelian);
         handleClose();
       } else {
-        alert(json.error || 'Gagal menyimpan data');
+        // Handle duplicate product error specifically
+        if (json.errorCode === 'DUPLICATE_PRODUCT') {
+          alert(`❌ ${json.error}\n\nSilakan hapus item yang sudah ada terlebih dahulu jika ingin menambahkan kembali.`);
+        } else {
+          alert(json.error || 'Gagal menyimpan data');
+        }
       }
     } catch (error) {
       alert('Terjadi kesalahan');

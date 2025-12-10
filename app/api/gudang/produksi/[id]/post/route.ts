@@ -2,7 +2,7 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 export async function POST(
   request: NextRequest, 
@@ -10,12 +10,14 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const produksiId = parseInt(id);
 
     console.log('🔄 Posting produksi ID:', produksiId);
 
-    // ✅ Step 1: Get produksi with details
+    // ============================================================
+    // STEP 1: Get produksi with details
+    // ============================================================
     const { data: produksiData, error: getProduksiError } = await supabase
       .from('transaksi_produksi')
       .select(`
@@ -51,13 +53,30 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // ✅ Step 2: Validasi stock SEMUA bahan baku DULU
+    // ============================================================
+    // STEP 2: Check duplicate stock records (PREVENT DOUBLE POST!)
+    // ============================================================
+    const { data: existingStockRecords } = await supabase
+      .from('stock_barang')
+      .select('id')
+      .eq('produksi_id', produksiId);
+
+    if (existingStockRecords && existingStockRecords.length > 0) {
+      console.log('⚠️ Stock already recorded, skipping...');
+      return NextResponse.json({
+        error: 'Produksi sudah diposting sebelumnya. Stock sudah tercatat.'
+      }, { status: 400 });
+    }
+
+    // ============================================================
+    // STEP 3: Validasi stock SEMUA bahan baku DULU
+    // ============================================================
     console.log('🔍 Validating stock for', details.length, 'items...');
     
     for (const detail of details) {
       if (!detail.item_id) continue;
 
-              const { data: item, error: itemError } = await supabase
+      const { data: item, error: itemError } = await supabase
         .from('produk')
         .select('id, nama_produk, stok')
         .eq('id', detail.item_id)
@@ -82,7 +101,9 @@ export async function POST(
 
     console.log('✅ Stock validation passed');
 
-    // ✅ Step 3: Update status to 'posted'
+    // ============================================================
+    // STEP 4: Update status to 'posted'
+    // ============================================================
     const { error: updateStatusError } = await supabase
       .from('transaksi_produksi')
       .update({ 
@@ -95,7 +116,9 @@ export async function POST(
 
     console.log('✅ Status updated to posted');
 
-    // ✅ Step 4: Proses pengurangan bahan baku
+    // ============================================================
+    // STEP 5: Proses pengurangan bahan baku + INSERT STOCK HISTORY
+    // ============================================================
     for (const detail of details) {
       if (!detail.item_id) continue;
 
@@ -128,7 +151,7 @@ export async function POST(
         throw updateStokError;
       }
 
-      // ✅ PENTING: Insert history SEKALI SAJA (keluar)
+      // ✅ INSERT history dengan FOREIGN KEY!
       const { error: historyError } = await supabase
         .from('stock_barang')
         .insert({
@@ -137,19 +160,31 @@ export async function POST(
           jumlah: jumlahKeluar,
           tanggal: produksiData.tanggal,
           tipe: 'keluar',
-          keterangan: `Produksi ID: ${id} (Bahan Baku)`,
-          hpp: parseFloat(detail.hpp?.toString() || '0')
+          produksi_id: produksiId, // ⭐ FOREIGN KEY!
+          keterangan: `Produksi ID: ${produksiId} (Bahan Baku)`,
+          hpp: parseFloat(detail.hpp?.toString() || '0'),
+          harga_jual: 0,
+          persentase: 0
         });
 
       if (historyError) {
-        console.error('⚠️ Warning: Failed to record history (keluar):', historyError);
-        // Don't throw, continue process
+        console.error('❌ Failed to record history (keluar):', historyError);
+        
+        // ROLLBACK stock if insert failed
+        await supabase
+          .from('produk')
+          .update({ stok: currentStok })
+          .eq('id', detail.item_id);
+        
+        throw historyError;
       }
     }
 
     console.log('✅ All materials deducted successfully');
 
-    // ✅ Step 5: Tambah stock hasil produksi
+    // ============================================================
+    // STEP 6: Tambah stock hasil produksi + INSERT STOCK HISTORY
+    // ============================================================
     const { data: produkHasil, error: getProdukHasilError } = await supabase
       .from('produk')
       .select('id, nama_produk, stok')
@@ -177,15 +212,15 @@ export async function POST(
       if (updateHasilError) throw updateHasilError;
 
       // Hitung HPP per unit
-       const totalHPP = details.reduce(
-  (sum: number, d: any) => sum + parseFloat(d.subtotal?.toString() || '0'),
-  0
-);
+      const totalHPP = details.reduce(
+        (sum: number, d: any) => sum + parseFloat(d.subtotal?.toString() || '0'),
+        0
+      );
       const hppPerUnit = jumlahMasuk > 0 ? totalHPP / jumlahMasuk : 0;
 
       console.log(`  💰 HPP: Total=${totalHPP} / Qty=${jumlahMasuk} = ${hppPerUnit} per unit`);
 
-      // ✅ PENTING: Insert history SEKALI SAJA (masuk)
+      // ✅ INSERT history dengan FOREIGN KEY!
       const { error: historyMasukError } = await supabase
         .from('stock_barang')
         .insert({
@@ -194,13 +229,23 @@ export async function POST(
           jumlah: jumlahMasuk,
           tanggal: produksiData.tanggal,
           tipe: 'masuk',
-          keterangan: `Hasil Produksi ID: ${id}`,
-          hpp: hppPerUnit
+          produksi_id: produksiId, // ⭐ FOREIGN KEY!
+          keterangan: `Produksi - Hasil Produksi`,
+          hpp: hppPerUnit,
+          harga_jual: 0,
+          persentase: 0
         });
 
       if (historyMasukError) {
-        console.error('⚠️ Warning: Failed to record history (masuk):', historyMasukError);
-        // Don't throw, continue process
+        console.error('❌ Failed to record history (masuk):', historyMasukError);
+        
+        // ROLLBACK
+        await supabase
+          .from('produk')
+          .update({ stok: currentStokHasil })
+          .eq('id', produksiData.produk_id);
+        
+        throw historyMasukError;
       }
 
       // Update HPP produk hasil
@@ -238,7 +283,7 @@ export async function POST(
     // Attempt rollback status if possible
     try {
       const { id } = await params;
-      const supabase = await supabaseServer();
+      const supabase = await supabaseAuthenticated();
       
       await supabase
         .from('transaksi_produksi')

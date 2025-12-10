@@ -114,6 +114,8 @@ export default function ModalTambahBarang({
         }),
       });
 
+      const json = await res.json();
+
       if (res.ok) {
         alert('Barang berhasil ditambahkan');
         onSuccess();
@@ -122,8 +124,12 @@ export default function ModalTambahBarang({
         setFormData({ produk_id: 0, harga: 0, jumlah: 0 });
         setSelectedStock(null);
       } else {
-        const error = await res.json();
-        alert(error.error || 'Gagal menambah barang');
+        // Handle duplicate product error specifically
+        if (json.errorCode === 'DUPLICATE_PRODUCT') {
+          alert(`❌ ${json.error}\n\nSilakan hapus item yang sudah ada terlebih dahulu jika ingin menambahkan kembali.`);
+        } else {
+          alert(json.error || 'Gagal menambah barang');
+        }
       }
     } catch (error) {
       console.error('Error:', error);

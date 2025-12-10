@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Trash2, Edit, Package, Calendar, User, MapPin, CreditCard, TrendingUp, Wallet, ShoppingBag, Receipt, CheckCircle, Clock } from 'lucide-react';
+import { usePermissions, ReadOnlyBanner } from '@/components/PermissionGuard';
+import PermissionGuard from '@/components/PermissionGuard';
 import ModalTambahBarang from '../ModalTambahBarang';
 import ModalBilling from '../ModalBilling';
 import ModalEditBarangPembelian from '../ModalEditBarangPembelian';
@@ -69,6 +71,7 @@ export default function DetailPembelianPage({
   const [id, setId] = useState<string>('');
   const [pembelian, setPembelian] = useState<PembelianData | null>(null);
   const [historyCicilan, setHistoryCicilan] = useState<CicilanItem[]>([]);
+  const [hutangData, setHutangData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showModalEditCicil, setShowModalEditCicil] = useState(false); // ✅ Tambah ini
   const [selectedCicilan, setSelectedCicilan] = useState<CicilanItem | null>(null); // ✅ Tambah ini
@@ -82,6 +85,27 @@ export default function DetailPembelianPage({
   
   const [selectedDetail, setSelectedDetail] = useState<DetailPembelian | null>(null);
 
+  // Permission guards - Only gidang and admin can manage purchases after billing
+  const permissions = usePermissions({
+    canView: 'purchase.read',
+    canCreate: 'purchase.manage',
+    canEdit: 'purchase.manage',
+    canManage: 'purchase.manage',
+  });
+
+  console.log('Keuangan Permission Debug:', {
+    user: 'keuangan (simulated)',
+    permissions: {
+      canView: permissions.canView,
+      canCreate: permissions.canCreate,
+      canEdit: permissions.canEdit,
+      canManage: permissions.canManage,
+    },
+    isReadOnly: permissions.canView && !permissions.canManage
+  });
+
+  const isReadOnly = permissions.canView && !permissions.canManage;
+
   useEffect(() => {
     params.then((p) => setId(p.id));
   }, [params]);
@@ -89,6 +113,18 @@ export default function DetailPembelianPage({
   useEffect(() => {
     if (id) fetchDetail();
   }, [id]);
+
+  const fetchHutangData = async () => {
+    try {
+      const res = await fetch(`/api/transaksi/pembelian/${id}/hutang`);
+      const json = await res.json();
+      if (res.ok && json.data) {
+        setHutangData(json.data);
+      }
+    } catch (error) {
+      console.error('Error fetching hutang data:', error);
+    }
+  };
 
   const fetchDetail = async (retryCount = 0) => {
     try {
@@ -121,6 +157,9 @@ export default function DetailPembelianPage({
       const res = await fetch(`/api/transaksi/pembelian/${id}/cicilan`);
       const json = await res.json();
       if (res.ok) setHistoryCicilan(json.data || []);
+
+      // Also fetch hutang data for accurate payment calculation
+      await fetchHutangData();
     } catch (error) {
       console.error('Error fetching history cicilan:', error);
     }
@@ -260,6 +299,9 @@ export default function DetailPembelianPage({
           </div>
         </div>
 
+        {/* Read-only banner for keuangan users */}
+        {isReadOnly && <ReadOnlyBanner />}
+
         {/* Info Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="group bg-white/80 backdrop-blur-xl rounded-2xl p-5 shadow-lg border border-white/20 hover:shadow-2xl transition-all duration-300 hover:-translate-y-1">
@@ -389,7 +431,7 @@ export default function DetailPembelianPage({
                       {(isPending || isBilled) && (
                         <td className="px-6 py-4 text-center">
                           <div className="flex justify-center gap-2">
-                            {isBilled && (
+                            {permissions.canManage && (
                               <button
                                 onClick={() => handleEditBarang(detail)}
                                 className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -398,7 +440,7 @@ export default function DetailPembelianPage({
                                 <Edit className="w-4 h-4" />
                               </button>
                             )}
-                            {isPending && (
+                            {isPending && permissions.canManage && (
                               <button
                                 onClick={() => handleDeleteItem(detail.id)}
                                 className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -465,19 +507,23 @@ export default function DetailPembelianPage({
           <div className="p-6 bg-white flex flex-wrap gap-3 justify-center border-t border-gray-200">
             {!isBilled ? (
               <>
-                <button
-                  onClick={() => setShowModalBilling(true)}
-                  disabled={!pembelian.detail_pembelian || pembelian.detail_pembelian.length === 0}
-                  className="px-8 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-semibold hover:shadow-xl transition-all duration-300 hover:scale-105 disabled:opacity-50"
-                >
-                  Billing Sekarang
-                </button>
-                <button
-                  onClick={handleBatal}
-                  className="px-8 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-semibold hover:shadow-xl transition-all duration-300 hover:scale-105"
-                >
-                  Batalkan
-                </button>
+                {permissions.canManage && (
+                  <button
+                    onClick={() => setShowModalBilling(true)}
+                    disabled={!pembelian.detail_pembelian || pembelian.detail_pembelian.length === 0}
+                    className="px-8 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-semibold hover:shadow-xl transition-all duration-300 hover:scale-105 disabled:opacity-50"
+                  >
+                    Billing Sekarang
+                  </button>
+                )}
+                {permissions.canManage && (
+                  <button
+                    onClick={handleBatal}
+                    className="px-8 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-semibold hover:shadow-xl transition-all duration-300 hover:scale-105"
+                  >
+                    Batalkan
+                  </button>
+                )}
               </>
             ) : (
               <>
@@ -487,7 +533,7 @@ export default function DetailPembelianPage({
                 >
                   Kembali
                 </button>
-                {!isLunas && (
+                {!isLunas && permissions.canManage && (
                   <>
                     <button
                       onClick={() => setShowModalCicil(true)}
@@ -503,18 +549,22 @@ export default function DetailPembelianPage({
                     </button>
                   </>
                 )}
-                <button
-                  onClick={() => setShowModalEditPembelian(true)}
-                  className="px-6 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl font-semibold hover:shadow-xl transition-all duration-300 hover:scale-105"
-                >
-                  Edit Data
-                </button>
-                <button
-                  onClick={() => setShowModalEditUangMuka(true)}
-                  className="px-6 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl font-semibold hover:shadow-xl transition-all duration-300 hover:scale-105"
-                >
-                  Edit Biaya
-                </button>
+                {permissions.canManage && (
+                  <button
+                    onClick={() => setShowModalEditPembelian(true)}
+                    className="px-6 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl font-semibold hover:shadow-xl transition-all duration-300 hover:scale-105"
+                  >
+                    Edit Data
+                  </button>
+                )}
+                {permissions.canManage && (
+                  <button
+                    onClick={() => setShowModalEditUangMuka(true)}
+                    className="px-6 py-3 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded-xl font-semibold hover:shadow-xl transition-all duration-300 hover:scale-105"
+                  >
+                    Edit Biaya
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -535,13 +585,13 @@ export default function DetailPembelianPage({
           <div className="text-center">
             <label className="block text-xs md:text-sm text-gray-600 mb-2">Sudah Dibayar</label>
             <div className="text-lg md:text-xl font-semibold text-green-600">
-              Rp. {calculateTotalDibayar().toLocaleString('id-ID')}
+              Rp. {(hutangData?.dibayar || calculateTotalDibayar()).toLocaleString('id-ID')}
             </div>
           </div>
           <div className="text-center">
             <label className="block text-xs md:text-sm text-gray-600 mb-2">Sisa Hutang</label>
             <div className="text-lg md:text-xl font-semibold text-red-600">
-              Rp. {calculateTagihan().toLocaleString('id-ID')}
+              Rp. {(hutangData ? (hutangData.total_hutang - hutangData.dibayar) : calculateTagihan()).toLocaleString('id-ID')}
             </div>
           </div>
         </div>
@@ -596,7 +646,7 @@ export default function DetailPembelianPage({
                     <td className="px-2 md:px-4 py-2 md:py-3 border border-gray-200 text-xs md:text-sm">{item.keterangan || '-'}</td>
                     <td className="px-2 md:px-4 py-2 md:py-3 text-center border border-gray-200">
                       <div className="flex justify-center gap-1 md:gap-2">
-                        {!isLunas && item.type !== 'pelunasan' ? (
+                        {!isLunas && item.type !== 'pelunasan' && permissions.canManage ? (
                           <>
                             <button
                                   onClick={() => handleEditCicilan(item)}

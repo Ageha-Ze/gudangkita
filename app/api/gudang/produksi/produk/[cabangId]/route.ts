@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 export async function GET(
   request: NextRequest, 
   context: { params: Promise<{ cabangId: string }> }
 ) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { cabangId } = await context.params;
 
     console.log('Fetching produk produksi for cabang:', cabangId);

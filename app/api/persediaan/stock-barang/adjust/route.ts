@@ -1,14 +1,17 @@
+"use server";
+
 // app/api/persediaan/stock-barang/adjust/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 /**
  * POST - Adjust stock to a specific value
  * This will calculate the difference and create appropriate stock_barang record
+ * ✅ CRITICAL FIX: Added audit trail for all manual stock adjustments
  */
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const body = await request.json();
 
     const {
@@ -19,17 +22,10 @@ export async function POST(request: NextRequest) {
       harga_jual,
       persentase_harga_jual,
       keterangan,
+      user_info, // Who is making this adjustment
     } = body;
 
     console.log('🔧 Adjusting stock:', { produk_id, cabang_id, jumlah_baru });
-
-    // Validation
-    if (!produk_id || !cabang_id || jumlah_baru === undefined) {
-      return NextResponse.json(
-        { success: false, error: 'produk_id, cabang_id, dan jumlah_baru wajib diisi' },
-        { status: 400 }
-      );
-    }
 
     // Get current stock
     const { data: produk, error: produkError } = await supabase
@@ -83,6 +79,9 @@ export async function POST(request: NextRequest) {
     const tipe = selisih > 0 ? 'masuk' : 'keluar';
     const jumlahAbs = Math.abs(selisih);
 
+    // Generate unique identifier for this adjustment
+    const adjustmentId = `adj_${produk_id}_${cabang_id}_${Date.now()}`;
+
     const { data: stockData, error: insertError } = await supabase
       .from('stock_barang')
       .insert({
@@ -91,7 +90,7 @@ export async function POST(request: NextRequest) {
         jumlah: jumlahAbs,
         tanggal: new Date().toISOString().split('T')[0],
         tipe,
-        keterangan: keterangan || `Penyesuaian stock manual (${selisih > 0 ? '+' : ''}${selisih.toFixed(2)})`,
+        keterangan: keterangan || `Penyesuaian stock manual (${selisih > 0 ? '+' : ''}${selisih.toFixed(2)}) - ID: ${adjustmentId}`,
         hpp: hpp || produk.hpp || 0,
         harga_jual: harga_jual || 0,
         persentase: persentase_harga_jual || 0,

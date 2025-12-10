@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Eye, Printer, Trash2, ShoppingCart } from 'lucide-react';
+import { usePermissions, ReadOnlyBanner } from '@/components/PermissionGuard';
+import PermissionGuard from '@/components/PermissionGuard';
 import ModalTambahPenjualan from './ModalTambahPenjualan';
 import ModalPrintNota from './ModalPrintNota';
 
@@ -36,7 +38,18 @@ export default function PenjualanListPage() {
   const [showModalTambah, setShowModalTambah] = useState(false);
   const [showModalPrint, setShowModalPrint] = useState(false);
   const [selectedPenjualanId, setSelectedPenjualanId] = useState<number>(0);
+  const [error, setError] = useState<string | null>(null);
   const limit = 10;
+
+  // Permission guards
+  const { canView, canCreate, canEdit, canDelete } = usePermissions({
+    canView: 'sales.read',
+    canCreate: 'sales.create',
+    canEdit: ['sales.update.today', 'sales.update.all'],
+    canDelete: 'sales.delete',
+  });
+
+  const isReadOnly = canView && !canCreate;
 
   useEffect(() => {
     fetchPenjualans();
@@ -45,19 +58,47 @@ export default function PenjualanListPage() {
   const fetchPenjualans = async () => {
     try {
       setLoading(true);
+      setError(null); // Reset error sebelum fetch
+
       const params = new URLSearchParams({
         page: page.toString(),
         limit: limit.toString(),
         search: search
       });
-      
+
       const res = await fetch(`/api/transaksi/penjualan?${params}`);
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+
       const json = await res.json();
-      
+
+      if (json.success === false) {
+        throw new Error(json.error || 'Gagal memuat data penjualan');
+      }
+
       setPenjualans(json.data || []);
       setTotalPages(json.pagination?.totalPages || 1);
-    } catch (error) {
-      console.error('Error:', error);
+    } catch (error: any) {
+      console.error('Error fetching penjualans:', error);
+      let errorMessage = 'Terjadi kesalahan saat memuat data penjualan. Silakan coba lagi.';
+
+      if (error.message?.includes('HTTP 401')) {
+        errorMessage = 'Sesi login telah berakhir. Silakan login kembali.';
+      } else if (error.message?.includes('HTTP 403')) {
+        errorMessage = 'Anda tidak memiliki akses untuk melihat data penjualan.';
+      } else if (error.message?.includes('HTTP 500')) {
+        errorMessage = 'Server mengalami masalah. Silakan coba lagi dalam beberapa saat.';
+      } else if (error.message?.includes('ECONNREFUSED') || error.message?.includes('NetworkError')) {
+        errorMessage = 'Koneksi internet bermasalah. Periksa koneksi Anda.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      setError(errorMessage);
+      setPenjualans([]);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
@@ -69,23 +110,100 @@ export default function PenjualanListPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus penjualan ini?')) return;
+    // Find the item for better confirmation message
+    const penjualanItem = penjualans.find(p => p.id === id);
+
+    // Improved Indonesian confirmation dialog
+    const confirmMessage = `🎯 KONFIRMASI PENGHAPUSAN DATA PENJUALAN
+
+📄 Nota Penjualan: ${penjualanItem?.nota_penjualan || 'N/A'}
+👤 Customer: ${penjualanItem?.customer?.nama || 'N/A'}
+💰 Total: Rp ${penjualanItem?.total?.toLocaleString('id-ID') || '0'}
+
+⚠️  PERINGATAN PENTING:
+• Semua detail barang akan dihapus
+• Data cicilan akan dibatalkan (jika ada)
+• Piutang customer akan dihapus
+• Saldo kas akan dikembalikan otomatis
+
+❓ Yakin ingin menghapus transaksi penjualan ini?`;
+
+    if (!confirm(confirmMessage)) return;
+
+    if (!id) {
+      setError('ID penjualan tidak valid. Silakan refresh halaman dan coba lagi.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
 
     try {
       const res = await fetch(`/api/transaksi/penjualan/${id}`, {
         method: 'DELETE',
       });
 
-      if (res.ok) {
-        alert('Penjualan berhasil dihapus');
-        fetchPenjualans();
-      } else {
-        const error = await res.json();
-        alert(error.error || 'Gagal menghapus penjualan');
+      if (!res.ok) {
+        let errorMessage = 'Gagal menghapus data penjualan';
+
+        if (res.status === 401) {
+          errorMessage = 'Sesi login telah berakhir. Silakan login kembali.';
+        } else if (res.status === 403) {
+          errorMessage = 'Anda tidak memiliki akses untuk menghapus data penjualan ini.';
+        } else if (res.status === 404) {
+          errorMessage = 'Data penjualan tidak ditemukan. Mungkin sudah dihapus sebelumnya.';
+        } else if (res.status === 409) {
+          errorMessage = 'Data penjualan tidak dapat dihapus karena masih memiliki referensi aktif.';
+        } else if (res.status >= 500) {
+          errorMessage = 'Server mengalami masalah. Silakan coba lagi dalam beberapa saat.';
+        }
+
+        const json = await res.json().catch(() => null);
+        if (json?.error) {
+          errorMessage += ': ' + json.error;
+        }
+
+        setError(errorMessage);
+        return;
       }
-    } catch (error) {
-      console.error('Error:', error);
-      alert('Terjadi kesalahan');
+
+      const json = await res.json();
+
+      if (json.success) {
+        console.log('✅ Delete successful:', json);
+        // Success message
+        const successDiv = document.createElement('div');
+        successDiv.className = 'fixed top-4 right-4 bg-green-50 border border-green-200 text-green-700 px-6 py-4 rounded-lg shadow-lg z-50 flex items-center gap-3';
+        successDiv.innerHTML = `
+          <span class="text-green-600">✅</span>
+          <div>
+            <p class="font-semibold">Berhasil Dihapus!</p>
+            <p class="text-sm">Data penjualan telah dihapus dan saldo kas dikembalikan.</p>
+          </div>
+          <button onclick="this.parentElement.remove()" class="text-green-700 hover:text-green-900 font-bold">×</button>
+        `;
+        document.body.appendChild(successDiv);
+
+        // Auto-remove after 5 seconds
+        setTimeout(() => successDiv.remove(), 5000);
+
+        // Refresh data
+        await fetchPenjualans();
+      } else {
+        setError(json.error || 'Gagal menghapus data penjualan');
+      }
+
+    } catch (error: any) {
+      console.error('❌ Delete error:', error);
+      let errorMessage = 'Terjadi kesalahan saat menghapus data. Silakan periksa koneksi internet Anda.';
+
+      if (error.message?.includes('NetworkError') || error.message?.includes('ECONNREFUSED')) {
+        errorMessage = 'Koneksi internet bermasalah. Data tidak dapat dihapus.';
+      }
+
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -107,6 +225,25 @@ export default function PenjualanListPage() {
         </div>
       </div>
 
+      {/* Read-only banner for roles without create permission */}
+      {isReadOnly && <ReadOnlyBanner />}
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center justify-between mb-4 sm:mb-6">
+          <div className="flex items-center gap-3">
+            <span className="text-red-500">⚠️</span>
+            <p className="text-sm font-medium">{error}</p>
+          </div>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-700 hover:text-red-900 font-bold text-lg"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Search & Add Button */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 bg-white p-3 sm:p-4 rounded-lg shadow-md">
         <div className="flex items-center gap-2 flex-1 sm:flex-none min-w-0">
@@ -119,13 +256,15 @@ export default function PenjualanListPage() {
             placeholder="Cari..."
           />
         </div>
-        <button
-          onClick={() => setShowModalTambah(true)}
-          className="w-full sm:w-auto px-4 sm:px-6 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2 whitespace-nowrap"
-        >
-          <Plus size={18} />
-          Tambah
-        </button>
+        {canCreate && (
+          <button
+            onClick={() => setShowModalTambah(true)}
+            className="w-full sm:w-auto px-4 sm:px-6 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2 whitespace-nowrap"
+          >
+            <Plus size={18} />
+            Tambah
+          </button>
+        )}
       </div>
 
       {/* Mobile Cards View */}
@@ -206,18 +345,22 @@ export default function PenjualanListPage() {
                   <Eye size={16} />
                   Detail
                 </button>
-                <button
-                  onClick={() => handlePrint(item.id)}
-                  className="flex items-center justify-center gap-2 px-3 py-2 text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition text-sm"
-                >
-                  <Printer size={16} />
-                </button>
-                <button
-                  onClick={() => handleDelete(item.id)}
-                  className="flex items-center justify-center gap-2 px-3 py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition text-sm"
-                >
-                  <Trash2 size={16} />
-                </button>
+                {canEdit && (
+                  <button
+                    onClick={() => handlePrint(item.id)}
+                    className="flex items-center justify-center gap-2 px-3 py-2 text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition text-sm"
+                  >
+                    <Printer size={16} />
+                  </button>
+                )}
+                {canDelete && (
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    className="flex items-center justify-center gap-2 px-3 py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition text-sm"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </div>
             </div>
           ))
@@ -318,20 +461,24 @@ export default function PenjualanListPage() {
                       >
                         <Eye size={18} />
                       </button>
-                      <button
-                        onClick={() => handlePrint(item.id)}
-                        className="text-purple-600 hover:text-purple-800 transition"
-                        title="Print"
-                      >
-                        <Printer size={18} />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(item.id)}
-                        className="text-red-600 hover:text-red-800 transition"
-                        title="Delete"
-                      >
-                        <Trash2 size={18} />
-                      </button>
+                      {canEdit && (
+                        <button
+                          onClick={() => handlePrint(item.id)}
+                          className="text-purple-600 hover:text-purple-800 transition"
+                          title="Print"
+                        >
+                          <Printer size={18} />
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          onClick={() => handleDelete(item.id)}
+                          className="text-red-600 hover:text-red-800 transition"
+                          title="Delete"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

@@ -34,18 +34,32 @@ export default function CustomerPage() {
       setIsLoading(true);
       setError(null);
       const result = await getCustomers();
-      
+
       if (result.success) {
         setCustomers(result.data || []);
         setFilteredCustomers(result.data || []);
       } else {
-        setError(result.error || 'Gagal memuat data customer');
+        let errorMessage = 'Gagal memuat data customer';
+        if (result.error?.includes('authentication') || result.error?.includes('401')) {
+          errorMessage = 'Sesi login telah berakhir. Silakan login kembali.';
+        } else if (result.error?.includes('authorization') || result.error?.includes('403')) {
+          errorMessage = 'Anda tidak memiliki akses untuk melihat data customer.';
+        } else if (result.error?.includes('500')) {
+          errorMessage = 'Server mengalami masalah. Silakan coba lagi dalam beberapa saat.';
+        } else if (result.error) {
+          errorMessage += ': ' + result.error;
+        }
+        setError(errorMessage);
         setCustomers([]);
         setFilteredCustomers([]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading customers:', error);
-      setError('Terjadi kesalahan saat memuat data');
+      let errorMessage = 'Terjadi kesalahan saat memuat data. Silakan periksa koneksi internet Anda.';
+      if (error.message?.includes('NetworkError') || error.message?.includes('ECONNREFUSED')) {
+        errorMessage = 'Koneksi internet bermasalah. Tidak dapat memuat data customer.';
+      }
+      setError(errorMessage);
       setCustomers([]);
       setFilteredCustomers([]);
     } finally {
@@ -122,20 +136,59 @@ export default function CustomerPage() {
   const handleDeleteConfirm = async () => {
     if (!customerToDelete) return;
 
+    setIsLoading(true);
+    setError(null);
+
     try {
       const result = await deleteCustomer(customerToDelete.id);
-      
+
       if (result.success) {
         await loadCustomers();
         setIsDeleteModalOpen(false);
         setCustomerToDelete(null);
-        alert(result.message || 'Customer berhasil dihapus');
+
+        // Success notification
+        const successDiv = document.createElement('div');
+        successDiv.className = 'fixed top-4 right-4 bg-green-50 border border-green-200 text-green-700 px-6 py-4 rounded-lg shadow-lg z-50 flex items-center gap-3';
+        successDiv.innerHTML = `
+          <span class="text-green-600">✅</span>
+          <div>
+            <p class="font-semibold">Customer Dihapus!</p>
+            <p class="text-sm">Customer <strong>${customerToDelete.nama}</strong> telah berhasil dihapus.</p>
+          </div>
+          <button onclick="this.parentElement.remove()" class="text-green-700 hover:text-green-900 font-bold">×</button>
+        `;
+        document.body.appendChild(successDiv);
+        setTimeout(() => successDiv.remove(), 5000);
       } else {
-        alert(result.error || result.message || 'Gagal menghapus customer');
+        let errorMessage = 'Gagal menghapus customer';
+
+        if (result.error?.includes('authentication') || result.error?.includes('401')) {
+          errorMessage = 'Sesi login telah berakhir. Silakan login kembali.';
+        } else if (result.error?.includes('authorization') || result.error?.includes('403')) {
+          errorMessage = 'Anda tidak memiliki akses untuk menghapus customer.';
+        } else if (result.error?.includes('reference') || result.error?.includes('still in use')) {
+          errorMessage = 'Customer tidak dapat dihapus karena masih ada transaksi terkait.';
+        } else if (result.error?.includes('500')) {
+          errorMessage = 'Server mengalami masalah. Silakan coba lagi dalam beberapa saat.';
+        } else if (result.error) {
+          errorMessage += ': ' + result.error;
+        }
+
+        setError(errorMessage);
+        setIsDeleteModalOpen(false);
+        setCustomerToDelete(null);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting customer:', error);
-      alert('Terjadi kesalahan saat menghapus customer');
+      const errorMessage = error.message?.includes('NetworkError') || error.message?.includes('ECONNREFUSED') ?
+        'Koneksi internet bermasalah. Customer tidak dapat dihapus.' :
+        'Terjadi kesalahan saat menghapus customer. Silakan coba lagi.';
+      setError(errorMessage);
+      setIsDeleteModalOpen(false);
+      setCustomerToDelete(null);
+    } finally {
+      setIsLoading(false);
     }
   };
 

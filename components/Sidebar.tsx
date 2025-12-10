@@ -3,14 +3,18 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { ReactElement } from 'react';
 import {
   Home, Database, Warehouse, ShoppingCart, Package, DollarSign,
   FileText, User, Users, Truck, Briefcase, Wallet, Building,
   BoxIcon, TrendingUp, TrendingDown, Clipboard, ChevronDown,
   CreditCard, Sparkles, Handshake, Bell, LogOut, Settings,
-  ChevronRight, ChevronLeft, X, Check,
+  ChevronRight, ChevronLeft, X, Check, Crown, Shield,
 } from 'lucide-react';
-import { logoutUser, getUserSession } from '@/app/login/actions';
+import { logoutUser } from '@/app/login/actions';
+import { hasPermission, MENU_PERMISSIONS } from '@/utils/permissions';
+import type { UserLevel } from '@/utils/permissions';
+import { useUser } from '@/contexts/UserContext';
 
 interface MenuItem {
   id: string;
@@ -116,13 +120,147 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
   const [badgeCounts, setBadgeCounts] = useState<Record<string, number>>({});
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [user, setUser] = useState({ name: 'Admin User', email: 'admin@gudangkita.com' });
+  const { user } = useUser();
   const [username, setUsername] = useState('User');
   const [marqueeText, setMarqueeText] = useState('');
   const [isMobile, setIsMobile] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
-  // Detect mobile device
+  // STRICT ROLE-BASED MENU FILTERING - Each role sees only their relevant menus
+const getFilteredMenuItems = () => {
+  const userLevel = user?.level;
+
+  // If no user level, only show dashboard
+  if (!userLevel) {
+    return menuItems.filter(item => item.id === 'dashboard');
+  }
+
+  // Super admin and admin see everything
+  if (userLevel === 'super_admin' || userLevel === 'admin') {
+    return menuItems;
+  }
+
+  // Define allowed menus and submenus by role
+  const roleMenuConfig: Record<string, { 
+    menus: string[], 
+    submenus?: Record<string, string[]> 
+  }> = {
+    keuangan: {
+  menus: ['dashboard', 'transaksi', 'keuangan', 'laporan'],
+  submenus: {
+    // ⚠️ VIEW-ONLY: For invoice verification & reconciliation
+    transaksi: ['pembelian-barang', 'penjualan-barang'],
+    
+    // ✅ FULL CONTROL: Financial management
+    keuangan: ['hutang-pembelian', 'piutang-penjualan', 'hutang-umum', 'kas-harian'],
+    
+    // ✅ VIEW: All financial reports
+    laporan: ['laporan-pembelian', 'laporan-penjualan', 'laporan-hutang', 'laporan-piutang', 'laporan-movement', 'laporan-sales', 'laporan-laba-rugi']
+      }
+    },
+    gudang: {
+  menus: ['dashboard', 'gudang', 'transaksi', 'persediaan', 'laporan'],
+  submenus: {
+    // ✅ FULL CONTROL: Warehouse operations
+    gudang: ['unloading', 'produksi'],
+    
+    // ⚠️ VIEW-ONLY: For receiving goods & verification
+    transaksi: ['pembelian-barang'],
+    
+    // ✅ FULL CONTROL: Inventory management
+    persediaan: ['stock-barang', 'stock-obname'],
+     laporan: ['laporan-pembelian', 'laporan-penjualan', 'laporan-movement', 'laporan-laba-rugi']
+      }
+    },
+    sales: {
+  menus: ['dashboard', 'master', 'transaksi', 'laporan'],
+  submenus: {
+    // ✅ FULL CONTROL: Customer management
+    master: ['customer'],
+    
+    // ✅ FULL CONTROL: Sales & consignment operations
+    transaksi: ['penjualan-barang', 'konsinyasi'],
+    
+    // ✅ VIEW: Sales-related reports
+     laporan: ['laporan-penjualan', 'laporan-piutang', 'laporan-sales']
+      }
+    },
+    kasir: {
+  menus: ['dashboard', 'master', 'transaksi', 'keuangan', 'persediaan', 'laporan'],
+  submenus: {
+    // ✅ FULL CONTROL: Customer management during sales
+    // ⚠️ VIEW-ONLY: Cash accounts
+    master: ['customer', 'kas'],
+    
+    // ✅ LIMITED CONTROL: Create sales, edit same-day only
+    transaksi: ['penjualan-barang'],
+    
+    // ⚠️ VIEW-ONLY: Piutang (for credit checks)
+    // ✅ FULL CONTROL: Daily cash management
+    keuangan: ['piutang-penjualan', 'kas-harian'],
+    
+    // ⚠️ VIEW-ONLY: Stock availability check
+    persediaan: ['stock-barang'],
+    
+    // ✅ VIEW: Sales & receivable reports
+   laporan: ['laporan-penjualan', 'laporan-piutang']
+      }
+    }
+  };
+
+  const config = roleMenuConfig[userLevel];
+  if (!config) {
+    return menuItems.filter((item: MenuItem) => item.id === 'dashboard');
+  }
+
+  // ✅ Filter WITHOUT deep cloning - preserve icon component references
+  const filtered = menuItems
+    .filter((item: MenuItem) => config.menus.includes(item.id))
+    .map((item: MenuItem) => {
+      // If item has submenu, filter it
+      if (item.submenu && config.submenus && config.submenus[item.id]) {
+        const allowedSubmenus = config.submenus[item.id];
+        return {
+          ...item, // Shallow copy preserves icon
+          submenu: item.submenu.filter((sub: MenuItem) => 
+            allowedSubmenus.includes(sub.id)
+          )
+        };
+      }
+      return item;
+    })
+    .filter((item: MenuItem) => {
+      // Remove menus with empty submenu
+      if (item.submenu) {
+        return item.submenu.length > 0;
+      }
+      return true;
+    });
+
+  return filtered;
+};
+// TEMPORARY DEBUG: Remove this after testing
+console.log('🔍 SIDEBAR USER DEBUG:', {
+  user,
+  userLevel: user?.level,
+  hasUser: !!user,
+  filteredCount: getFilteredMenuItems().length,
+});
+
+useEffect(() => {
+  console.log('=== SIDEBAR DEBUG ===');
+  console.log('User:', user);
+  console.log('User Level:', user?.level);
+  console.log('typeof user:', typeof user);
+  console.log('user===null?', user === null);
+  console.log('user===undefined?', user === undefined);
+  console.log('filteredMenuItems:', getFilteredMenuItems());
+  console.log('filteredMenuItems.length:', getFilteredMenuItems().length);
+}, [user]);
+
+const filteredMenuItems = getFilteredMenuItems();
+
+// Detect mobile device
   useEffect(() => {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768);
@@ -180,39 +318,17 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
     }
   };
 
-  // Fetch current user data
-  const fetchCurrentUser = async () => {
-    try {
-      // Call server action to get current user
-      const userData = await getUserSession();
-      if (userData && userData.username) {
-        setUsername(userData.username);
-        return;
-      }
-
-      // Try to get user data from localStorage as fallback
-      const storedUserData = localStorage.getItem('current_user');
-      if (storedUserData) {
-        const user = JSON.parse(storedUserData);
-        if (user.username) {
-          setUsername(user.username);
-          return;
-        }
-      }
-
-      // Final fallback - set default
-      setUsername('Admin');
-    } catch (error) {
-      console.error('Error fetching current user:', error);
-      setUsername('Admin'); // Set a default fallback
+  // Update username when user context changes
+  useEffect(() => {
+    if (user?.username) {
+      setUsername(user.username);
+    } else {
+      setUsername('User');
     }
-  };
+  }, [user]);
 
   // Update marquee text
   useEffect(() => {
-    // Fetch user data on component mount
-    fetchCurrentUser();
-
     const updateMarquee = () => {
       const now = new Date();
 
@@ -294,6 +410,63 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
 
   const unreadCount = notifications.filter(n => !n.isRead).length;
 
+  // Get user level label
+  const getUserLevelLabel = (level?: string) => {
+    const labels: Record<string, string> = {
+      'super_admin': 'Super Admin',
+      'admin': 'Admin',
+      'keuangan': 'Keuangan',
+      'kasir': 'Kasir',
+      'gudang': 'Gudang',
+      'sales': 'Sales',
+    };
+    return labels[level || ''] || 'User';
+  };
+
+  // Get user level color theme
+  const getUserLevelColor = (level?: string) => {
+    const colors: Record<string, { bg: string; badge: string }> = {
+      'super_admin': {
+        bg: 'bg-gradient-to-br from-red-500 to-red-600',
+        badge: 'bg-red-100 text-red-800'
+      },
+      'admin': {
+        bg: 'bg-gradient-to-br from-purple-500 to-purple-600',
+        badge: 'bg-purple-100 text-purple-800'
+      },
+      'keuangan': {
+        bg: 'bg-gradient-to-br from-orange-500 to-orange-600',
+        badge: 'bg-orange-100 text-orange-800'
+      },
+      'kasir': {
+        bg: 'bg-gradient-to-br from-blue-500 to-blue-600',
+        badge: 'bg-blue-100 text-blue-800'
+      },
+      'gudang': {
+        bg: 'bg-gradient-to-br from-emerald-500 to-emerald-600',
+        badge: 'bg-emerald-100 text-emerald-800'
+      },
+      'sales': {
+        bg: 'bg-gradient-to-br from-teal-500 to-teal-600',
+        badge: 'bg-teal-100 text-teal-800'
+      },
+    };
+    return colors[level || ''] || { bg: 'bg-gray-500', badge: 'bg-gray-100 text-gray-800' };
+  };
+
+  // Get user level icon
+  const getUserLevelIcon = (level?: string) => {
+    const iconMap: Record<string, ReactElement> = {
+      'super_admin': <Crown className="w-3 h-3" />,
+      'admin': <Shield className="w-3 h-3" />,
+      'keuangan': <DollarSign className="w-3 h-3" />,
+      'kasir': <CreditCard className="w-3 h-3" />,
+      'gudang': <Package className="w-3 h-3" />,
+      'sales': <Users className="w-3 h-3" />,
+    };
+    return iconMap[level || ''] || <User className="w-3 h-3" />;
+  };
+
   return (
     <>
       {/* Sidebar */}
@@ -359,7 +532,7 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
             )}
           </div>
 
-          <div className="space-y-0.5 px-3">{menuItems.map((item) => (
+          <div className="space-y-0.5 px-3">{filteredMenuItems.map((item: MenuItem) => (
               <div key={item.id}>
                 {item.submenu ? (
                   <div>
@@ -396,7 +569,7 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
 
                     {openMenus.includes(item.id) && shouldBeExpanded && (
                       <div className="mt-1 space-y-0.5">
-                        {item.submenu.map((sub) => (
+                        {item.submenu.map((sub: MenuItem) => (
                           sub.href ? (
                             <Link
                               key={sub.id}
@@ -556,31 +729,83 @@ export default function Sidebar({ isExpanded, setIsExpanded }: SidebarProps) {
           )}
         </div>
 
-        {/* User Profile Section */}
-        <div className="p-4 border-t border-gray-100">
+        {/* Enhanced User Profile Section */}
+        <div className="p-4 border-t border-gray-100 bg-gradient-to-t from-blue-50/30 to-transparent">
           {shouldBeExpanded ? (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                  <User className="w-4 h-4 text-white" />
+            <div className="space-y-3">
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Profile Pengguna
+                </p>
+                
+              </div>
+
+              {/* Profile Info */}
+              <div className="flex items-center gap-3 p-2 bg-white/50 backdrop-blur-sm rounded-lg border border-gray-100/80">
+                {/* Avatar with Role Color */}
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center ring-2 ring-white shadow-sm ${
+                  getUserLevelColor(user?.level).bg
+                }`}>
+                  <span className="text-white font-bold text-sm">
+                    {user?.username?.charAt(0).toUpperCase() || 'U'}
+                  </span>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{user.name}</p>
+
+                {/* User Details */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 truncate">
+                    {user?.username || 'User'}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                      getUserLevelColor(user?.level).badge
+                    }`}>
+                      {getUserLevelIcon(user?.level)}
+                      {getUserLevelLabel(user?.level)}
+                    </span>
+                  </div>
                 </div>
               </div>
+
+              {/* Quick Stats */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-white/60 p-2 rounded-md text-center">
+                  <p className="text-gray-500">Status</p>
+                  <p className="font-medium text-green-600">Aktif</p>
+                </div>
+                <div className="bg-white/60 p-2 rounded-md text-center">
+                  <p className="text-gray-500">Role</p>
+                  <p className="font-medium text-blue-600 capitalize">
+                    {getUserLevelLabel(user?.level).split(' ')[0]}
+                  </p>
+                </div>
+              </div>
+
+              {/* Logout Button */}
               <button
                 onClick={handleLogout}
-                className="p-2 text-gray-400 hover:text-red-600 transition-colors duration-200"
-                title="Logout"
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-all duration-200 text-sm font-medium"
               >
                 <LogOut className="w-4 h-4" />
+                Keluar Sistem
               </button>
             </div>
           ) : (
-            <div className="flex justify-center">
+            <div className="flex flex-col items-center gap-3">
+              {/* Collapsed Avatar */}
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center ring-2 ring-white shadow-sm transition-all duration-200 ${
+                getUserLevelColor(user?.level).bg
+              }`} title={`${user?.username || 'User'} - ${getUserLevelLabel(user?.level)}`}>
+                <span className="text-white font-bold text-sm">
+                  {user?.username?.charAt(0).toUpperCase() || 'U'}
+                </span>
+              </div>
+
+              {/* Collapsed Logout */}
               <button
                 onClick={handleLogout}
-                className="p-2 text-gray-400 hover:text-red-600 transition-colors duration-200"
+                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all duration-200"
                 title="Logout"
               >
                 <LogOut className="w-4 h-4" />

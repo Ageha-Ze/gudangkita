@@ -26,18 +26,32 @@ export default function ProdukPage() {
       setIsLoading(true);
       setError(null);
       const result = await getProduk();
-      
+
       if (result.success) {
         setProducts(result.data || []);
         setFilteredData(result.data || []);
       } else {
-        setError(result.error || 'Gagal memuat data produk');
+        let errorMessage = 'Gagal memuat data produk';
+        if (result.error?.includes('authentication') || result.error?.includes('401')) {
+          errorMessage = 'Sesi login telah berakhir. Silakan login kembali.';
+        } else if (result.error?.includes('authorization') || result.error?.includes('403')) {
+          errorMessage = 'Anda tidak memiliki akses untuk melihat data produk.';
+        } else if (result.error?.includes('500')) {
+          errorMessage = 'Server mengalami masalah. Silakan coba lagi dalam beberapa saat.';
+        } else if (result.error) {
+          errorMessage += ': ' + result.error;
+        }
+        setError(errorMessage);
         setProducts([]);
         setFilteredData([]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error loading products:', error);
-      setError('Terjadi kesalahan saat memuat data');
+      let errorMessage = 'Terjadi kesalahan saat memuat data. Silakan periksa koneksi internet Anda.';
+      if (error.message?.includes('NetworkError') || error.message?.includes('ECONNREFUSED')) {
+        errorMessage = 'Koneksi internet bermasalah. Tidak dapat memuat data produk.';
+      }
+      setError(errorMessage);
       setProducts([]);
       setFilteredData([]);
     } finally {
@@ -109,15 +123,60 @@ export default function ProdukPage() {
 
   const handleDeleteConfirm = async () => {
     if (deleteTarget) {
-      const result = await deleteProduk(deleteTarget.id);
-      
-      if (result.success) {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const result = await deleteProduk(deleteTarget.id);
+
+        if (result.success) {
+          setIsDeleteOpen(false);
+          setDeleteTarget(null);
+
+          // Success notification
+          const successDiv = document.createElement('div');
+          successDiv.className = 'fixed top-4 right-4 bg-green-50 border border-green-200 text-green-700 px-6 py-4 rounded-lg shadow-lg z-50 flex items-center gap-3';
+          successDiv.innerHTML = `
+            <span class="text-green-600">✅</span>
+            <div>
+              <p class="font-semibold">Produk Dihapus!</p>
+              <p class="text-sm">Produk <strong>${deleteTarget.nama_produk}</strong> telah berhasil dihapus.</p>
+            </div>
+            <button onclick="this.parentElement.remove()" class="text-green-700 hover:text-green-900 font-bold">×</button>
+          `;
+          document.body.appendChild(successDiv);
+          setTimeout(() => successDiv.remove(), 5000);
+
+          await fetchData();
+        } else {
+          let errorMessage = 'Gagal menghapus produk';
+
+          if (result.error?.includes('authentication') || result.error?.includes('401')) {
+            errorMessage = 'Sesi login telah berakhir. Silakan login kembali.';
+          } else if (result.error?.includes('authorization') || result.error?.includes('403')) {
+            errorMessage = 'Anda tidak memiliki akses untuk menghapus produk.';
+          } else if (result.error?.includes('reference') || result.error?.includes('still in use')) {
+            errorMessage = 'Produk tidak dapat dihapus karena masih digunakan dalam transaksi.';
+          } else if (result.error?.includes('500')) {
+            errorMessage = 'Server mengalami masalah. Silakan coba lagi dalam beberapa saat.';
+          } else if (result.error) {
+            errorMessage += ': ' + result.error;
+          }
+
+          setError(errorMessage);
+          setIsDeleteOpen(false);
+          setDeleteTarget(null);
+        }
+      } catch (error: any) {
+        console.error('Error deleting product:', error);
+        const errorMessage = error.message?.includes('NetworkError') || error.message?.includes('ECONNREFUSED') ?
+          'Koneksi internet bermasalah. Produk tidak dapat dihapus.' :
+          'Terjadi kesalahan saat menghapus produk. Silakan coba lagi.';
+        setError(errorMessage);
         setIsDeleteOpen(false);
         setDeleteTarget(null);
-        fetchData();
-        alert(result.message || 'Produk berhasil dihapus');
-      } else {
-        alert(result.error || result.message || 'Gagal menghapus produk');
+      } finally {
+        setIsLoading(false);
       }
     }
   };
@@ -198,7 +257,7 @@ export default function ProdukPage() {
           <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-5 shadow-lg shadow-purple-500/30">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-purple-100 font-medium">Produk Jerigen</p>
+                <p className="text-sm text-purple-100 font-medium">Produk Bundles</p>
                 <p className="text-2xl font-bold text-white mt-1">{produkJerigen}</p>
                 <p className="text-xs text-purple-100 mt-1">Kemasan besar</p>
               </div>

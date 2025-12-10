@@ -8,6 +8,7 @@ interface ModalHistoryProps {
   onClose: () => void;
   produkId: number;
   namaProduk: string;
+  cabangId?: number;
 }
 
 interface StockHistory {
@@ -36,7 +37,8 @@ export default function ModalHistory({
   isOpen,
   onClose,
   produkId,
-  namaProduk
+  namaProduk,
+  cabangId
 }: ModalHistoryProps) {
   const [loading, setLoading] = useState(true);
   const [histories, setHistories] = useState<StockHistory[]>([]);
@@ -50,12 +52,17 @@ export default function ModalHistory({
     if (isOpen && produkId) {
       fetchHistory();
     }
-  }, [isOpen, produkId]);
+  }, [isOpen, produkId, cabangId]);
 
   const fetchHistory = async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/persediaan/stock-barang/${produkId}`);
+      const params = new URLSearchParams();
+      if (cabangId) {
+        params.append('cabang_id', cabangId.toString());
+      }
+      const url = `/api/persediaan/stock-barang/${produkId}?${params.toString()}`;
+      const res = await fetch(url);
       const json = await res.json();
 
       if (res.ok) {
@@ -77,6 +84,10 @@ export default function ModalHistory({
         start_date: dateFilter.start,
         end_date: dateFilter.end,
       });
+
+      if (cabangId) {
+        params.append('cabang_id', cabangId.toString());
+      }
 
       const response = await fetch(`/api/persediaan/stock-barang/export?${params}`);
       
@@ -248,7 +259,7 @@ export default function ModalHistory({
                     Jumlah
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">
-                    Saldo
+                    Stock saat ini
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">
                     HPP

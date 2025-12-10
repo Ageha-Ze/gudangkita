@@ -2,7 +2,7 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 // POST - Tambah item ke penjualan
 export async function POST(
@@ -10,7 +10,7 @@ export async function POST(
   context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { id: penjualan_id } = await context.params;
     const body = await request.json();
 
@@ -30,6 +30,37 @@ export async function POST(
       return NextResponse.json({
         error: 'Tidak bisa menambah item pada penjualan yang sudah dikonfirmasi'
       }, { status: 400 });
+    }
+
+    // ✅ DUPLICATE VALIDATION: Cek apakah produk sudah ada di penjualan ini
+    const { data: existingItem, error: checkError } = await supabase
+      .from('detail_penjualan')
+      .select('id, produk_id')
+      .eq('penjualan_id', penjualan_id)
+      .eq('produk_id', body.produk_id)
+      .maybeSingle();
+
+    if (checkError) {
+      console.error('Error checking duplicate item:', checkError);
+      return NextResponse.json(
+        { error: 'Error checking duplicate item' },
+        { status: 500 }
+      );
+    }
+
+    if (existingItem) {
+      // Get product name for better error message
+      const { data: produk } = await supabase
+        .from('produk')
+        .select('nama_produk')
+        .eq('id', body.produk_id)
+        .single();
+
+      return NextResponse.json({
+        error: `Produk ${produk?.nama_produk || 'dengan ID ' + body.produk_id} sudah ada dalam penjualan ini. Silakan edit jumlahnya atau hapus item yang sudah ada terlebih dahulu.`,
+        errorCode: 'DUPLICATE_PRODUCT',
+        existingItemId: existingItem.id
+      }, { status: 409 }); // 409 Conflict for duplicates
     }
 
     // ✅ Validasi: Cek stock availability (info saja, tidak dikurangi)
@@ -117,10 +148,178 @@ export async function POST(
   }
 }
 
+// ✅ PUT - Update item di penjualan
+export async function PUT(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const supabase = await supabaseAuthenticated();
+    const { id: penjualan_id } = await context.params;
+    const body = await request.json();
+
+    console.log('✏️ Updating item:', body);
+
+    // Validasi: Cek apakah penjualan sudah dikonfirmasi
+    const { data: penjualan, error: penjualanError } = await supabase
+      .from('transaksi_penjualan')
+      .select('status, status_diterima')
+      .eq('id', penjualan_id)
+      .single();
+
+    if (penjualanError) throw penjualanError;
+
+    // Tidak bisa edit item jika sudah dikonfirmasi
+    if (penjualan.status_diterima === 'Diterima') {
+      return NextResponse.json({
+        error: 'Tidak bisa mengedit item pada penjualan yang sudah dikonfirmasi'
+      }, { status: 400 });
+    }
+
+    // Get item data sebelum update
+    const { data: oldItem, error: getItemError } = await supabase
+      .from('detail_penjualan')
+      .select('produk_id, jumlah, harga, subtotal')
+      .eq('id', body.itemId)
+      .single();
+
+    if (getItemError) throw getItemError;
+
+    // Validasi: Cek stock availability
+    const { data: produk, error: produkError } = await supabase
+      .from('produk')
+      .select('stok, nama_produk')
+      .eq('id', oldItem.produk_id)
+      .single();
+
+    if (produkError) throw produkError;
+
+    // ✅ SIMPLIFIED VALIDATION (Works with Global Stock System)
+    const { data: produkData, error: produkFetchError } = await supabase
+      .from('produk')
+      .select('stok, nama_produk, satuan')
+      .eq('id', oldItem.produk_id)
+      .single();
+
+    if (produkFetchError) throw produkFetchError;
+
+    const globalStock = parseFloat(produkData.stok?.toString() || '0');
+    const jumlahLama = parseFloat(oldItem.jumlah?.toString() || '0');
+    const jumlahBaru = parseFloat(body.jumlah?.toString() || '0');
+    const additionalNeeded = jumlahBaru - jumlahLama;
+
+    console.log(`  📦 Stock validation for: ${produkData.nama_produk}`);
+    console.log(`     Global stock: ${globalStock} ${produkData.satuan}`);
+    console.log(`     Current usage: ${jumlahLama}`);
+    console.log(`     New request: ${jumlahBaru}`);
+    console.log(`     Additional needed: ${additionalNeeded}`);
+
+    // Get total pending reservations for this product (ALL cabang)
+    const { data: allPendingReservations } = await supabase
+      .from('detail_penjualan')
+      .select(`
+        jumlah,
+        penjualan:penjualan_id!inner(
+          id,
+          status_diterima
+        )
+      `)
+      .eq('produk_id', oldItem.produk_id)
+      .eq('penjualan.status_diterima', 'Belum Diterima')
+      .neq('penjualan_id', penjualan_id); // Exclude current sale
+
+    const totalReservedByOthers = allPendingReservations
+      ?.reduce((sum: number, item: any) => sum + parseFloat(item.jumlah?.toString() || '0'), 0) || 0;
+
+    const availableStock = globalStock - totalReservedByOthers;
+
+    console.log(`     Reserved by other pending: ${totalReservedByOthers}`);
+    console.log(`     Available: ${availableStock}`);
+
+    // Validation: If increasing quantity, check availability
+    if (additionalNeeded > 0) {
+      if (additionalNeeded > availableStock) {
+        return NextResponse.json({
+          error: `Stock ${produkData.nama_produk} tidak mencukupi!\n\n` +
+                 `Stock total: ${globalStock.toFixed(2)} ${produkData.satuan}\n` +
+                 `Direserve penjualan lain: ${totalReservedByOthers.toFixed(2)}\n` +
+                 `Tersedia: ${availableStock.toFixed(2)}\n` +
+                 `Tambahan diminta: ${additionalNeeded.toFixed(2)}`
+        }, { status: 400 });
+      }
+      console.log(`     ✓ Validation passed: additional ${additionalNeeded} <= available ${availableStock}`);
+    } else {
+      console.log(`     ✓ Reducing quantity - always allowed`);
+    }
+
+    // Update detail penjualan
+    const newSubtotal = jumlahBaru * parseFloat(body.harga?.toString() || '0');
+    
+    const { data: updatedItem, error: updateError } = await supabase
+      .from('detail_penjualan')
+      .update({
+        jumlah: jumlahBaru,
+        harga: parseFloat(body.harga?.toString() || '0'),
+        subtotal: newSubtotal
+      })
+      .eq('id', body.itemId)
+      .select(`
+        *,
+        produk:produk_id (id, nama_produk, kode_produk, satuan)
+      `)
+      .single();
+
+    if (updateError) throw updateError;
+
+    console.log('  ✅ Item updated');
+
+    // Update total penjualan
+    const { data: allDetails } = await supabase
+      .from('detail_penjualan')
+      .select('subtotal')
+      .eq('penjualan_id', penjualan_id);
+
+    const total = allDetails?.reduce(
+      (sum, item) => sum + parseFloat(item.subtotal?.toString() || '0'), 
+      0
+    ) || 0;
+
+    const { error: updateTotalError } = await supabase
+      .from('transaksi_penjualan')
+      .update({ total })
+      .eq('id', penjualan_id);
+
+    if (updateTotalError) throw updateTotalError;
+
+    console.log(`  💰 Total updated: ${total}`);
+
+    return NextResponse.json({ 
+      success: true,
+      data: updatedItem, 
+      message: 'Item berhasil diupdate',
+      stock_info: {
+        product: produk.nama_produk,
+        old_quantity: jumlahLama,
+        new_quantity: jumlahBaru,
+        change: jumlahBaru - jumlahLama,
+        available: availableStock,
+        remaining: availableStock - jumlahBaru
+      }
+    });
+  } catch (error: any) {
+    console.error('❌ Error updating item:', error);
+    return NextResponse.json(
+      { error: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+
 // DELETE - Hapus item dari penjualan
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const searchParams = request.nextUrl.searchParams;
     const itemId = searchParams.get('itemId');
     const penjualanId = searchParams.get('penjualanId');

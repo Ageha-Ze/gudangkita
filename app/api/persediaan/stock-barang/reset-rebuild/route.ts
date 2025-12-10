@@ -1,6 +1,6 @@
 // app/api/persediaan/stock-barang/reset-rebuild/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 /**
  * POST - Reset & Rebuild All Stock
@@ -18,7 +18,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
  */
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const body = await request.json();
     const { mode } = body; // 'check' or 'reset'
 

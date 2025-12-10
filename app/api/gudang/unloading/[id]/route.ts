@@ -1,16 +1,15 @@
 // app/api/gudang/unloading/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     let resolvedParams;
     
-    // Handle params dengan error handling
     try {
       resolvedParams = await params;
     } catch (paramError) {
@@ -26,7 +25,6 @@ export async function GET(
 
     const { id } = resolvedParams;
 
-    // Validasi ID
     if (!id) {
       return NextResponse.json(
         { 
@@ -65,7 +63,6 @@ export async function GET(
     if (mainError) {
       console.error('Error fetching main item:', mainError);
       
-      // Handle specific error codes
       if (mainError.code === 'PGRST116') {
         return NextResponse.json(
           { 
@@ -94,25 +91,33 @@ export async function GET(
     const startTime = new Date(createdAtDate.getTime() - 1000).toISOString();
     const endTime = new Date(createdAtDate.getTime() + 1000).toISOString();
 
+    // ✅ FIXED: Updated to match modal interface
+    // produk_jerigen_id = JERIGEN (source)
+    // produk_kiloan_id = KILOAN (destination)
     const { data: items, error } = await supabase
       .from('gudang_unloading')
       .select(`
         id,
         tanggal,
-        produk_curah_id,
         produk_jerigen_id,
+        produk_kiloan_id,
         jumlah,
+        satuan_input,
+        satuan_output,
+        jumlah_output,
+        density,
+        conversion_type,
         cabang_id,
         keterangan,
         created_at,
-        produk_curah:produk_curah_id (
+        produk_jerigen:produk_jerigen_id (
           id,
           nama_produk,
           kode_produk,
           satuan,
           stok
         ),
-        produk_jerigen:produk_jerigen_id (
+        produk_kiloan:produk_kiloan_id (
           id,
           nama_produk,
           kode_produk,
@@ -150,7 +155,7 @@ export async function GET(
 
     // Validasi data relasi
     const invalidItems = items.filter(item => 
-      !item.produk_curah || !item.produk_jerigen || !item.cabang
+      !item.produk_jerigen || !item.produk_kiloan || !item.cabang
     );
 
     if (invalidItems.length > 0) {
@@ -165,18 +170,24 @@ export async function GET(
       );
     }
 
-    // Transform data: produk_jerigen = jerigen (sumber), produk_curah = kiloan (tujuan)
+    // ✅ FIXED: Updated transformation to match new column names
+    // Now using produk_jerigen_id as source (jerigen) and produk_kiloan_id as destination (kiloan)
     const transformedItems = items.map(item => ({
       id: item.id,
-      produk_jerigen_id: item.produk_curah_id, // Source (jerigen)
-      produk_kiloan_id: item.produk_jerigen_id, // Destination (kiloan)
+      produk_jerigen_id: item.produk_jerigen_id,    // ✅ Source: Jerigen
+      produk_kiloan_id: item.produk_kiloan_id,      // ✅ Destination: Kiloan
       jumlah: parseFloat(item.jumlah.toString()),
+      satuan_input: item.satuan_input,
+      satuan_output: item.satuan_output,
+      jumlah_output: item.jumlah_output ? parseFloat(item.jumlah_output.toString()) : null,
+      density: item.density,
+      conversion_type: item.conversion_type,
       keterangan: item.keterangan || null,
-      produk_jerigen: item.produk_curah, // Source data
-      produk_kiloan: item.produk_jerigen, // Destination data
+      produk_jerigen: item.produk_jerigen,        // ✅ Source product data
+      produk_kiloan: item.produk_kiloan,          // ✅ Destination product data
     }));
 
-    // Calculate total dengan error handling
+    // Calculate total
     let totalQty = 0;
     try {
       totalQty = items.reduce((sum, item) => {
@@ -223,7 +234,6 @@ export async function GET(
   } catch (error: any) {
     console.error('Error in GET /api/gudang/unloading/[id]:', error);
     
-    // Handle specific error types
     if (error.code === 'PGRST301') {
       return NextResponse.json(
         { 

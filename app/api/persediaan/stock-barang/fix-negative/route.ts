@@ -1,7 +1,7 @@
 // app/api/persediaan/stock-barang/fix-negative/route.ts
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 /**
  * POST - Fix negative stock by recalculating from movements
@@ -12,7 +12,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
  */
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const body = await request.json();
     const { produk_id } = body; // Optional: fix specific product only
 
@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
 
     // Get all movements
     const { data: movements, error: movementsError } = await supabase

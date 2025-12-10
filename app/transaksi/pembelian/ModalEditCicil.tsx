@@ -1,4 +1,4 @@
- 'use client';
+'use client';
 
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
@@ -23,6 +23,7 @@ export default function ModalEditCicil({
   editingCicilan,
 }: Props) {
   const [rekenings, setRekenings] = useState<any[]>([]);
+  const [originalNilaiCicilan, setOriginalNilaiCicilan] = useState(0);
   const [formData, setFormData] = useState({
     rekening: '',
     tanggal_cicilan: new Date().toISOString().split('T')[0],
@@ -31,17 +32,23 @@ export default function ModalEditCicil({
   });
   const [loading, setLoading] = useState(false);
 
+  // ✅ FIX: Hitung maksimal cicilan yang bisa diinput
+  // Rumus: sisaTagihan + nilai cicilan original (karena akan diganti)
+  const maxCicilan = sisaTagihan + originalNilaiCicilan;
+  
   // Remaining tagihan after entering nilai_cicilan (preview)
-  const remainingAfter = Math.max(0, sisaTagihan - (formData.nilai_cicilan || 0));
-  const isOver = (formData.nilai_cicilan || 0) > sisaTagihan;
+  const remainingAfter = Math.max(0, maxCicilan - (formData.nilai_cicilan || 0));
+  const isOver = (formData.nilai_cicilan || 0) > maxCicilan;
 
   // Populate form with editing data
   useEffect(() => {
     if (isOpen && editingCicilan) {
+      const originalValue = editingCicilan.jumlah_cicilan || 0;
+      setOriginalNilaiCicilan(originalValue);
       setFormData({
         rekening: editingCicilan.rekening || '',
         tanggal_cicilan: editingCicilan.tanggal_cicilan || new Date().toISOString().split('T')[0],
-        nilai_cicilan: editingCicilan.jumlah_cicilan || 0,
+        nilai_cicilan: originalValue,
         keterangan: editingCicilan.keterangan || '',
       });
     }
@@ -88,8 +95,9 @@ export default function ModalEditCicil({
       return;
     }
 
-    if (formData.nilai_cicilan > sisaTagihan) {
-      alert('Nilai cicilan tidak boleh melebihi sisa tagihan');
+    // ✅ FIX: Validasi menggunakan maxCicilan, bukan sisaTagihan
+    if (formData.nilai_cicilan > maxCicilan) {
+      alert(`Nilai cicilan tidak boleh melebihi Rp. ${maxCicilan.toLocaleString('id-ID')}`);
       return;
     }
 
@@ -134,6 +142,7 @@ export default function ModalEditCicil({
       nilai_cicilan: 0,
       keterangan: '',
     });
+    setOriginalNilaiCicilan(0);
     onClose();
   };
 
@@ -150,11 +159,23 @@ export default function ModalEditCicil({
         </div>
 
         {/* Summary Hutang */}
-        <div className="mb-4 p-4 bg-blue-50 rounded">
+        <div className="mb-4 p-4 bg-blue-50 rounded space-y-2">
           <div className="flex justify-between">
-            <span className="text-sm text-gray-600">Sisa Hutang:</span>
+            <span className="text-sm text-gray-600">Sisa Hutang Saat Ini:</span>
             <span className="font-bold text-red-600">
               Rp. {sisaTagihan.toLocaleString('id-ID')}
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-sm text-gray-600">Nilai Cicilan Original:</span>
+            <span className="font-semibold text-blue-600">
+              Rp. {originalNilaiCicilan.toLocaleString('id-ID')}
+            </span>
+          </div>
+          <div className="flex justify-between pt-2 border-t border-blue-200">
+            <span className="text-sm font-semibold text-gray-700">Maksimal Cicilan Baru:</span>
+            <span className="font-bold text-green-600">
+              Rp. {maxCicilan.toLocaleString('id-ID')}
             </span>
           </div>
         </div>
@@ -193,9 +214,28 @@ export default function ModalEditCicil({
               min="0"
               required
             />
-            <p className="text-xs mt-1">Maksimal: Rp. {sisaTagihan.toLocaleString('id-ID')}</p>
-            <p className={`text-xs mt-1 ${isOver ? 'text-red-500' : 'text-gray-500'}`}>
-              Sisa setelah cicilan: Rp. {remainingAfter.toLocaleString('id-ID')}
+            <p className="text-xs mt-1 text-gray-600">
+              Maksimal: Rp. {maxCicilan.toLocaleString('id-ID')}
+            </p>
+            
+            {/* Preview perubahan */}
+            {formData.nilai_cicilan !== originalNilaiCicilan && (
+              <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                <p className="text-xs text-yellow-800">
+                  <strong>Perubahan:</strong> 
+                  <br />
+                  Rp. {originalNilaiCicilan.toLocaleString('id-ID')} → 
+                  Rp. {(formData.nilai_cicilan || 0).toLocaleString('id-ID')}
+                  <br />
+                  <span className={formData.nilai_cicilan > originalNilaiCicilan ? 'text-red-600' : 'text-green-600'}>
+                    ({formData.nilai_cicilan > originalNilaiCicilan ? '+' : ''}{((formData.nilai_cicilan || 0) - originalNilaiCicilan).toLocaleString('id-ID')})
+                  </span>
+                </p>
+              </div>
+            )}
+            
+            <p className={`text-xs mt-1 ${isOver ? 'text-red-500 font-semibold' : 'text-gray-500'}`}>
+              Sisa hutang setelah cicilan: Rp. {remainingAfter.toLocaleString('id-ID')}
             </p>
           </div>
 
@@ -242,7 +282,7 @@ export default function ModalEditCicil({
             <button
               type="submit"
               disabled={loading || formData.nilai_cicilan <= 0 || isOver}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? 'Menyimpan...' : 'Update'}
             </button>

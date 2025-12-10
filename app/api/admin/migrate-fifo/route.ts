@@ -1,13 +1,12 @@
-'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import { applyFIFO } from '@/lib/fifo/calculateFIFO';
 
 // POST - Migrate existing data to FIFO
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const body = await request.json();
     const includePenjualan = body.include_penjualan || false;
 
@@ -212,7 +211,7 @@ export async function POST(request: NextRequest) {
 // GET - Check migration status
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
 
     // Count billed pembelian
     const { count: totalPembelian } = await supabase

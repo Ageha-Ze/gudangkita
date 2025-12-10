@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import UIWrapper from "@/components/UIWrapper";
+import { UserProvider } from "@/contexts/UserContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -14,7 +15,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="id">
       <body className={inter.className}>
-        <UIWrapper>{children}</UIWrapper>
+        <UserProvider>
+          <UIWrapper>{children}</UIWrapper>
+        </UserProvider>
       </body>
     </html>
   );

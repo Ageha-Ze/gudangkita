@@ -3,11 +3,12 @@
      'use server';
 
      import { NextRequest, NextResponse } from 'next/server';
-     import { supabaseServer } from '@/lib/supabaseServer';
+     import { supabaseAuthenticated } from '@/lib/supabaseServer';
+    import { validateStockDeletion, restoreStock, logAuditTrail } from '@/lib/helpers/stockSafety';
 
      export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
        try {
-         const supabase = await supabaseServer();
+         const supabase = await supabaseAuthenticated();
          const { id } = await params;
 
          console.log('Fetching produksi detail for ID:', id);
@@ -65,7 +66,7 @@
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const body = await request.json();
     const { item_id, jumlah, hpp, subtotal } = body;
 
@@ -97,52 +98,129 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(
+  request: NextRequest, 
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const startTime = Date.now();
+
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { searchParams } = new URL(request.url);
     const detailId = searchParams.get('detailId');
     const { id } = await params;
+    const produksiId = parseInt(id);
 
     if (detailId) {
-      // Allow detail item deletion (doesn't affect stock safety)
-      const { error } = await supabase
+      // ============================================================
+      // DETAIL ITEM DELETION: Return allocated material to stock
+      // ============================================================
+      console.log('🗑️ Deleting production detail:', detailId);
+
+      const { data: detail, error: getError } = await supabase
+        .from('detail_produksi')
+        .select('item_id, jumlah')
+        .eq('id', parseInt(detailId))
+        .single();
+
+      if (getError || !detail) {
+        throw new Error('Detail item not found');
+      }
+
+      // Return material stock (+jumlah)
+      const { data: produk } = await supabase
+        .from('produk')
+        .select('stok')
+        .eq('id', detail.item_id)
+        .single();
+
+      const currentStock = parseFloat(produk?.stok?.toString() || '0');
+      const newStock = currentStock + parseFloat(detail.jumlah?.toString() || '0');
+
+      const { error: stockError } = await supabase
+        .from('produk')
+        .update({
+          stok: newStock,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', detail.item_id);
+
+      if (stockError) {
+        throw stockError;
+      }
+
+      // Delete the detail record
+      const { error: deleteError } = await supabase
         .from('detail_produksi')
         .delete()
         .eq('id', parseInt(detailId));
 
-      if (error) throw error;
-      return NextResponse.json({ message: 'Detail deleted' });
+      if (deleteError) throw deleteError;
+
+      console.log(`✅ Detail deleted and stock restored: +${detail.jumlah} to item ${detail.item_id}`);
+
+      return NextResponse.json({
+        success: true,
+        message: 'Detail item deleted and stock restored'
+      });
     } else {
-      // ⚠️ PRODUCTION DELETION - STOCK SAFETY CHECK REQUIRED
-      const produksiId = parseInt(id);
-      console.log('🔒 Checking production safety before delete:', produksiId);
+      // ============================================================
+      // PRODUCTION DELETION - WITH STOCK SAFETY
+      // ============================================================
+      console.log('🗑️ DELETE PRODUKSI ID:', produksiId);
 
-      // 🔍 STEP 1: VERIFY STOCK HASN'T BEEN CONSUMED
-      const consumedStock = await checkProductionStockConsumed(produksiId);
+      // STEP 1: Get produksi data
+      const { data: produksi, error: fetchError } = await supabase
+        .from('transaksi_produksi')
+        .select(`
+          id, tanggal, produk_id, jumlah, satuan,
+          cabang_id, pegawai_id, status
+        `)
+        .eq('id', produksiId)
+        .single();
 
-      if (consumedStock > 0) {
-        console.log(`❌ BLOCKED: Production ${produksiId} has ${consumedStock} units consumed`);
+      if (fetchError || !produksi) {
+        return NextResponse.json(
+          { success: false, error: 'Data produksi tidak ditemukan' },
+          { status: 404 }
+        );
+      }
+
+      console.log('📦 Produksi:', produksi);
+
+      // STEP 2: Validate Stock Safety
+      const stockValidation = await validateStockDeletion('produksi', produksiId);
+      
+      if (!stockValidation.safe) {
         return NextResponse.json({
-          error: 'Cannot delete data, because it will result in negative stock. Please delete the sales/consignment data first.'
+          success: false,
+          error: stockValidation.message
         }, { status: 400 });
       }
 
-      console.log('✅ SAFE: No stock consumption detected, proceeding with reversal...');
+      // STEP 3: Restore Stock (using helper)
+      const stockResult = await restoreStock('produksi', produksiId);
+      
+      console.log(stockResult.restored 
+        ? `✅ Stock restored: ${stockResult.count} records`
+        : 'ℹ️ No stock to restore'
+      );
 
-      // ✅ STEP 2: REVERSE STOCK MOVEMENTS (since it's safe)
-      await reverseProductionStock(produksiId);
+      // STEP 4: Log Audit Trail
+      await logAuditTrail(
+        'DELETE',
+        'transaksi_produksi',
+        produksiId,
+        produksi
+      );
 
-      // ✅ STEP 3: DELETE RECORDS
-      // Delete all related detail_produksi (to avoid FK constraint errors)
-      const { error: deleteDetailsError } = await supabase
+      // STEP 5: Delete detail_produksi
+      await supabase
         .from('detail_produksi')
         .delete()
         .eq('produksi_id', produksiId);
 
-      if (deleteDetailsError) throw deleteDetailsError;
-
-      // Delete the production record
+      // STEP 6: Delete transaksi_produksi
       const { error: deleteProduksiError } = await supabase
         .from('transaksi_produksi')
         .delete()
@@ -150,140 +228,36 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
       if (deleteProduksiError) throw deleteProduksiError;
 
-      console.log('✅ SUCCESS: Production deleted with stock properly reversed');
+      // STEP 7: Build Response
+      const executionTime = Date.now() - startTime;
+
+      console.log(`✅ DELETE SUKSES! (${executionTime}ms)`);
 
       return NextResponse.json({
         success: true,
-        message: 'Production deleted successfully with stock reversal'
+        message: stockResult.restored 
+          ? `Produksi berhasil dihapus dan stock dikembalikan (${stockResult.count} items)`
+          : 'Produksi berhasil dihapus',
+        deleted: {
+          produksi_id: produksiId,
+          stock_restored: stockResult.restored,
+          stock_items: stockResult.count,
+          execution_time_ms: executionTime
+        },
+        details: {
+          stock_products: stockResult.products || [],
+          validation: stockValidation
+        }
       });
     }
   } catch (error: any) {
     console.error('❌ ERROR in production DELETE:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
-
-// 🔍 Helper: Check if production stock has been consumed by sales
-async function checkProductionStockConsumed(productionId: number) {
-  try {
-    const supabase = await supabaseServer();
-
-    // Step 1: Get production output (finished product)
-    const { data: production } = await supabase
-      .from('transaksi_produksi')
-      .select('produk_id, jumlah')
-      .eq('id', productionId)
-      .single();
-
-    if (!production) {
-      return 0; // No production found
-    }
-
-    // Step 2: Check current stock level of the finished product
-    const { data: currentStock } = await supabase
-      .from('produk')
-      .select('stok, nama_produk')
-      .eq('id', production.produk_id)
-      .single();
-
-    const currentStockLevel = parseFloat(currentStock?.stok?.toString() || '0');
-    const producedAmount = parseFloat(production.jumlah?.toString() || '0');
-
-    console.log(`🔍 Production ${productionId} (${currentStock?.nama_produk}): Produced ${producedAmount}, Current stock: ${currentStockLevel}`);
-
-    // Step 3: If current stock is less than what was produced, stock was consumed
-    // This accounts for sales, consignment, stock opname, or any other consumption
-    const consumedFromProduction = producedAmount - currentStockLevel;
-
-    if (consumedFromProduction > 0) {
-      console.log(`❌ Stock was consumed: ${consumedFromProduction} units`);
-      return consumedFromProduction;
-    }
-
-    console.log(`✅ No stock consumption detected`);
-    return 0;
-
-  } catch (error) {
-    console.error('Error checking production stock consumption:', error);
-    throw error;
-  }
-}
-
-// 🔄 Helper: Reverse production stock movements
-// 🔄 Helper: Reverse production stock movements
-async function reverseProductionStock(productionId: number) {
-  try {
-    const supabase = await supabaseServer();
-    console.log(`🔄 Reversing stock for production ${productionId}...`);
-
-    // Step 1: Get production result FIRST (pindah ke atas)
-    const { data: production } = await supabase
-      .from('transaksi_produksi')
-      .select('produk_id, jumlah')
-      .eq('id', productionId)
-      .single();
-
-    if (!production) {
-      throw new Error('Production data not found');
-    }
-
-    // Step 2: REVERSE Raw Material (-) to become (+)
-    const { data: details } = await supabase
-      .from('detail_produksi')
-      .select('item_id, jumlah')
-      .eq('produksi_id', productionId);
-
-    if (details) {
-      for (const detail of details) {
-        // Add back raw materials (+X)
-        const { error: updateError } = await supabase
-          .from('produk')
-          .update({
-            stok: (stok: any) => Number(stok) + parseFloat(detail.jumlah?.toString() || '0'),
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', detail.item_id);
-
-        if (updateError) {
-          console.error(`Failed to reverse raw material ${detail.item_id}:`, updateError);
-          throw updateError;
-        }
-
-        console.log(`  ➕ Raw material ${detail.item_id}: +${detail.jumlah}`);
-      }
-    }
-
-    // Step 3: REVERSE Finished Product (+) to become (-)
-    const { error: updateError } = await supabase
-      .from('produk')
-      .update({
-        stok: (stok: any) => Number(stok) - parseFloat(production.jumlah?.toString() || '0'),
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', production.produk_id);
-
-    if (updateError) {
-      console.error(`Failed to reverse finished product ${production.produk_id}:`, updateError);
-      throw updateError;
-    }
-
-    console.log(`  ➖ Finished product ${production.produk_id}: -${production.jumlah}`);
-
-    // Step 4: CLEAN Stock History (remove production movements)
-    const { error: cleanError } = await supabase
-      .from('stock_barang')
-      .delete()
-      .or(`keterangan.eq.Hasil Produksi ID: ${productionId},keterangan.eq.Produksi ID: ${productionId} (Bahan Baku)`);
-
-    if (cleanError) {
-      console.error('Warning: Failed to clean stock history:', cleanError);
-      // Don't throw - history cleanup is secondary
-    }
-
-    console.log('✅ Stock reversal completed successfully');
-
-  } catch (error) {
-    console.error('❌ Error in reverseProductionStock:', error);
-    throw error;
+    return NextResponse.json(
+      { 
+        success: false,
+        error: error.message 
+      }, 
+      { status: 500 }
+    );
   }
 }

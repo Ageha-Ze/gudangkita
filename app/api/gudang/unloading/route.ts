@@ -1,11 +1,12 @@
 // app/api/gudang/unloading/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
+import { logAuditTrail } from '@/lib/helpers/stockSafety';
 
-// GET - List unloading
+// GET - List unloading (unchanged)
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { searchParams } = new URL(request.url);
     
     const search = searchParams.get('search') || '';
@@ -14,7 +15,6 @@ export async function GET(request: NextRequest) {
     const cabangId = searchParams.get('cabang_id');
     const offset = (page - 1) * limit;
 
-    // Query untuk ambil semua data unloading dengan relasi
     let query = supabase
       .from('gudang_unloading')
       .select(`
@@ -26,13 +26,13 @@ export async function GET(request: NextRequest) {
         cabang_id,
         keterangan,
         created_at,
-        produk_curah:produk_curah_id (
+        produk_jerigen:produk_curah_id (
           id,
           nama_produk,
           kode_produk,
           satuan
         ),
-        produk_jerigen:produk_jerigen_id (
+        produk_kiloan:produk_jerigen_id (
           id,
           nama_produk,
           kode_produk,
@@ -46,7 +46,6 @@ export async function GET(request: NextRequest) {
       `, { count: 'exact' })
       .order('created_at', { ascending: false });
 
-    // Filter by cabang jika ada
     if (cabangId) {
       const parsedCabangId = parseInt(cabangId);
       if (isNaN(parsedCabangId)) {
@@ -65,21 +64,19 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    // Apply search filter
     let filteredData = allData || [];
     if (search) {
       const searchLower = search.toLowerCase();
       filteredData = filteredData.filter((item: any) => 
-        item.produk_curah?.nama_produk?.toLowerCase().includes(searchLower) ||
         item.produk_jerigen?.nama_produk?.toLowerCase().includes(searchLower) ||
-        item.produk_curah?.kode_produk?.toLowerCase().includes(searchLower) ||
+        item.produk_kiloan?.nama_produk?.toLowerCase().includes(searchLower) ||
         item.produk_jerigen?.kode_produk?.toLowerCase().includes(searchLower) ||
+        item.produk_kiloan?.kode_produk?.toLowerCase().includes(searchLower) ||
         item.cabang?.nama_cabang?.toLowerCase().includes(searchLower) ||
         new Date(item.tanggal).toLocaleDateString('id-ID').includes(searchLower)
       );
     }
 
-    // Group by tanggal + cabang untuk summary view
     const grouped = filteredData.reduce((acc: any, item: any) => {
       const createdAtKey = new Date(item.created_at).toISOString().slice(0, 19);
       const key = `${item.tanggal}-${item.cabang_id}-${createdAtKey}`;
@@ -104,7 +101,6 @@ export async function GET(request: NextRequest) {
 
     const groupedArray = Object.values(grouped);
 
-    // Pagination
     const totalRecords = groupedArray.length;
     const totalPages = Math.ceil(totalRecords / limit);
     const paginatedData = groupedArray.slice(offset, offset + limit);
@@ -132,13 +128,12 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Create unloading
+// ✅✅✅ POST with KG → ML Conversion Support
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     let body;
 
-    // Parse body dengan error handling
     try {
       body = await request.json();
     } catch (parseError) {
@@ -162,7 +157,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validasi tanggal format
     if (isNaN(Date.parse(body.tanggal))) {
       return NextResponse.json(
         { 
@@ -173,7 +167,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validasi cabang_id adalah angka
     const cabangId = parseInt(body.cabang_id);
     if (isNaN(cabangId)) {
       return NextResponse.json(
@@ -185,7 +178,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validasi items
     if (!body.items || !Array.isArray(body.items) || body.items.length === 0) {
       return NextResponse.json(
         { 
@@ -222,28 +214,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Validasi stock produk jerigen (sumber) sebelum unloading
+    // ✅ Fetch products and validate + calculate conversion
     for (let i = 0; i < body.items.length; i++) {
       const item = body.items[i];
       
+      // Fetch produk jerigen dengan density
       const { data: produkJerigen, error: produkError } = await supabase
         .from('produk')
-        .select('stok, nama_produk')
+        .select('id, nama_produk, satuan, density_kg_per_liter')
         .eq('id', item.produk_jerigen_id)
         .single();
 
-      if (produkError) {
+      if (produkError || !produkJerigen) {
         console.error('Error fetching produk jerigen:', produkError);
-        return NextResponse.json(
-          { 
-            success: false,
-            error: `Item ke-${i + 1}: Gagal mengecek stock produk jerigen` 
-          },
-          { status: 500 }
-        );
-      }
-
-      if (!produkJerigen) {
         return NextResponse.json(
           { 
             success: false,
@@ -253,30 +236,14 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      const stockSetelahUnload = parseFloat(produkJerigen.stok) - parseFloat(item.jumlah);
-      
-      if (stockSetelahUnload < 0) {
-        return NextResponse.json(
-          { 
-            success: false,
-            error: `Stock ${produkJerigen.nama_produk} tidak mencukupi!\nStock tersedia: ${produkJerigen.stok} kg\nDiminta: ${item.jumlah} kg` 
-          },
-          { status: 400 }
-        );
-      }
-    }
-
-    // Validasi produk kiloan exists
-    for (let i = 0; i < body.items.length; i++) {
-      const item = body.items[i];
-      
-      const { data: produkKiloan, error: produkError } = await supabase
+      // Fetch produk kiloan
+      const { data: produkKiloan, error: produkKiloanError } = await supabase
         .from('produk')
-        .select('id, nama_produk')
+        .select('id, nama_produk, satuan')
         .eq('id', item.produk_kiloan_id)
         .single();
 
-      if (produkError || !produkKiloan) {
+      if (produkKiloanError || !produkKiloan) {
         return NextResponse.json(
           { 
             success: false,
@@ -285,15 +252,131 @@ export async function POST(request: NextRequest) {
           { status: 404 }
         );
       }
+
+      // 🆕 Calculate output based on conversion
+      let jumlahOutput = parseFloat(item.jumlah);
+      let conversionInfo = null;
+
+      if (produkJerigen.satuan === 'Kg' && produkKiloan.satuan === 'Ml') {
+        // KG → ML conversion
+        if (!produkJerigen.density_kg_per_liter || produkJerigen.density_kg_per_liter <= 0) {
+          return NextResponse.json(
+            { 
+              success: false,
+              error: `❌ Produk "${produkJerigen.nama_produk}" belum memiliki density factor!\n\nSilakan set density di Master Produk terlebih dahulu.` 
+            },
+            { status: 400 }
+          );
+        }
+        
+        jumlahOutput = (parseFloat(item.jumlah) / produkJerigen.density_kg_per_liter) * 1000;
+        conversionInfo = {
+          type: 'KG_TO_ML',
+          input: parseFloat(item.jumlah),
+          output: jumlahOutput,
+          density: produkJerigen.density_kg_per_liter,
+          formula: `${item.jumlah} KG / ${produkJerigen.density_kg_per_liter} * 1000 = ${jumlahOutput.toFixed(2)} ML`
+        };
+        
+        console.log(`🔄 Conversion: ${conversionInfo.formula}`);
+      } else if (produkJerigen.satuan === 'Ml' && produkKiloan.satuan === 'Kg') {
+        // ML → KG conversion (reverse - rare case)
+        if (!produkJerigen.density_kg_per_liter || produkJerigen.density_kg_per_liter <= 0) {
+          return NextResponse.json(
+            { 
+              success: false,
+              error: `❌ Produk "${produkJerigen.nama_produk}" belum memiliki density factor untuk konversi ML→KG!` 
+            },
+            { status: 400 }
+          );
+        }
+        
+        jumlahOutput = (parseFloat(item.jumlah) / 1000) * produkJerigen.density_kg_per_liter;
+        conversionInfo = {
+          type: 'ML_TO_KG',
+          input: parseFloat(item.jumlah),
+          output: jumlahOutput,
+          density: produkJerigen.density_kg_per_liter,
+          formula: `${item.jumlah} ML / 1000 * ${produkJerigen.density_kg_per_liter} = ${jumlahOutput.toFixed(2)} KG`
+        };
+        
+        console.log(`🔄 Conversion: ${conversionInfo.formula}`);
+      }
+      // else: same unit, no conversion needed
+
+      // Store calculated output for later use
+      item._calculated_output = jumlahOutput;
+      item._conversion_info = conversionInfo;
+      item._produk_jerigen = produkJerigen;
+      item._produk_kiloan = produkKiloan;
     }
 
-    // Insert semua items dengan timestamp yang sama
+    // ✅ Validate BRANCH-SPECIFIC stock for jerigen
+    for (let i = 0; i < body.items.length; i++) {
+      const item = body.items[i];
+      const produkJerigen = item._produk_jerigen;
+      
+      // Get BRANCH-SPECIFIC stock from stock_barang
+      const { data: stockMovements, error: stockError } = await supabase
+        .from('stock_barang')
+        .select('jumlah, tipe')
+        .eq('produk_id', item.produk_jerigen_id)
+        .eq('cabang_id', cabangId);
+
+      if (stockError) {
+        console.error('Error fetching stock movements:', stockError);
+        return NextResponse.json(
+          { 
+            success: false,
+            error: `Item ke-${i + 1}: Gagal mengecek stock di cabang` 
+          },
+          { status: 500 }
+        );
+      }
+
+      // Calculate branch-specific stock
+      let branchStock = 0;
+      if (stockMovements && stockMovements.length > 0) {
+        branchStock = stockMovements.reduce((total, movement) => {
+          const jumlah = parseFloat(movement.jumlah.toString());
+          return movement.tipe === 'masuk' 
+            ? total + jumlah 
+            : total - jumlah;
+        }, 0);
+      }
+
+      console.log(`📊 Stock check - ${produkJerigen.nama_produk} di cabang ${cabangId}: ${branchStock} ${produkJerigen.satuan}`);
+
+      // Validate against BRANCH stock
+      const requestedAmount = parseFloat(item.jumlah);
+      if (requestedAmount > branchStock) {
+        const { data: cabangData } = await supabase
+          .from('cabang')
+          .select('nama_cabang')
+          .eq('id', cabangId)
+          .single();
+
+        return NextResponse.json(
+          { 
+            success: false,
+            error: 
+              `❌ Stock ${produkJerigen.nama_produk} di ${cabangData?.nama_cabang || 'cabang ini'} tidak mencukupi!\n\n` +
+              `Stock tersedia: ${branchStock.toFixed(2)} ${produkJerigen.satuan}\n` +
+              `Diminta: ${requestedAmount.toFixed(2)} ${produkJerigen.satuan}\n` +
+              `Kekurangan: ${(requestedAmount - branchStock).toFixed(2)} ${produkJerigen.satuan}`
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // ✅ Insert unloading records with calculated output
     const currentTimestamp = new Date().toISOString();
     const unloadingData = body.items.map((item: any) => ({
       tanggal: body.tanggal,
-      produk_curah_id: item.produk_jerigen_id, // Source (jerigen)
-      produk_jerigen_id: item.produk_kiloan_id, // Destination (kiloan)
-      jumlah: parseFloat(item.jumlah),
+      produk_curah_id: item.produk_jerigen_id,
+      produk_jerigen_id: item.produk_kiloan_id,
+      jumlah: item._calculated_output || parseFloat(item.jumlah), // Use converted amount
       cabang_id: cabangId,
       keterangan: item.keterangan || body.keterangan || null,
       status: 'selesai',
@@ -310,21 +393,35 @@ export async function POST(request: NextRequest) {
       throw insertError;
     }
 
-    // Update stock: KURANGI produk jerigen (sumber), TAMBAH produk kiloan (tujuan)
+    // ✅ Update stock: GLOBAL produk.stok + BRANCH-SPECIFIC stock_barang
     try {
       for (const item of body.items) {
-        // 1. KURANGI stock produk jerigen (sumber)
+        const jumlahInput = parseFloat(item.jumlah); // Original input
+        const jumlahOutput = item._calculated_output || jumlahInput; // Converted output
+        const conversionInfo = item._conversion_info;
+
+        const unloadingRecord = insertedData.find(ins =>
+          ins.produk_curah_id === item.produk_jerigen_id &&
+          ins.produk_jerigen_id === item.produk_kiloan_id
+        );
+
+        if (!unloadingRecord) {
+          throw new Error(`Cannot find unloading record for item: ${item.produk_jerigen_id} -> ${item.produk_kiloan_id}`);
+        }
+
+        // 1. KURANGI stock produk jerigen (use INPUT amount)
         const { data: produkJerigen, error: fetchError1 } = await supabase
           .from('produk')
-          .select('stok')
+          .select('stok, nama_produk, satuan')
           .eq('id', item.produk_jerigen_id)
           .single();
 
         if (fetchError1) throw fetchError1;
 
         if (produkJerigen) {
-          const newStokJerigen = parseFloat(produkJerigen.stok) - parseFloat(item.jumlah);
-          
+          const newStokJerigen = parseFloat(produkJerigen.stok) - jumlahInput;
+
+          // Update global stock
           const { error: updateError1 } = await supabase
             .from('produk')
             .update({ stok: newStokJerigen })
@@ -332,33 +429,42 @@ export async function POST(request: NextRequest) {
 
           if (updateError1) throw updateError1;
 
-          // Insert stock movement KELUAR untuk jerigen
+          // Insert BRANCH-SPECIFIC stock movement KELUAR (use INPUT amount)
+          const keteranganKeluar = conversionInfo 
+            ? `Unloading: ${conversionInfo.formula}`
+            : `Unloading ke ${jumlahOutput.toFixed(2)} ${item._produk_kiloan.satuan}`;
+
           const { error: stockError1 } = await supabase
             .from('stock_barang')
             .insert({
               produk_id: item.produk_jerigen_id,
+              unloading_id: unloadingRecord.id,
               cabang_id: cabangId,
-              jumlah: parseFloat(item.jumlah),
+              jumlah: jumlahInput,
               tanggal: body.tanggal,
               tipe: 'keluar',
-              keterangan: `Unloading ke kiloan`
+              keterangan: keteranganKeluar,
+              hpp: 0
             });
 
           if (stockError1) throw stockError1;
+
+          console.log(`✅ Stock keluar: ${produkJerigen.nama_produk} -${jumlahInput} ${produkJerigen.satuan} (Cabang ${cabangId})`);
         }
 
-        // 2. TAMBAH stock produk kiloan (tujuan)
+        // 2. TAMBAH stock produk kiloan (use OUTPUT amount - converted)
         const { data: produkKiloan, error: fetchError2 } = await supabase
           .from('produk')
-          .select('stok')
+          .select('stok, nama_produk, satuan')
           .eq('id', item.produk_kiloan_id)
           .single();
 
         if (fetchError2) throw fetchError2;
 
         if (produkKiloan) {
-          const newStokKiloan = parseFloat(produkKiloan.stok) + parseFloat(item.jumlah);
-          
+          const newStokKiloan = parseFloat(produkKiloan.stok) + jumlahOutput;
+
+          // Update global stock
           const { error: updateError2 } = await supabase
             .from('produk')
             .update({ stok: newStokKiloan })
@@ -366,23 +472,31 @@ export async function POST(request: NextRequest) {
 
           if (updateError2) throw updateError2;
 
-          // Insert stock movement MASUK untuk kiloan
+          // Insert BRANCH-SPECIFIC stock movement MASUK (use OUTPUT amount)
+          const keteranganMasuk = conversionInfo
+            ? `Hasil unloading: ${conversionInfo.formula}`
+            : `Hasil unloading dari ${jumlahInput} ${produkJerigen.satuan}`;
+
           const { error: stockError2 } = await supabase
             .from('stock_barang')
             .insert({
               produk_id: item.produk_kiloan_id,
+              unloading_id: unloadingRecord.id,
               cabang_id: cabangId,
-              jumlah: parseFloat(item.jumlah),
+              jumlah: jumlahOutput,
               tanggal: body.tanggal,
               tipe: 'masuk',
-              keterangan: `Hasil unloading dari jerigen`
+              keterangan: keteranganMasuk,
+              hpp: 0
             });
 
           if (stockError2) throw stockError2;
+
+          console.log(`✅ Stock masuk: ${produkKiloan.nama_produk} +${jumlahOutput.toFixed(2)} ${produkKiloan.satuan} (Cabang ${cabangId})`);
         }
       }
     } catch (stockError: any) {
-      console.error('Error updating stock:', stockError);
+      console.error('❌ Error updating stock:', stockError);
       
       // Rollback: hapus unloading yang baru dibuat
       if (insertedData && insertedData.length > 0) {
@@ -403,9 +517,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Build success message with conversion info
+    let successMessage = 'Unloading berhasil!';
+    const conversions = body.items.filter((i: any) => i._conversion_info);
+    if (conversions.length > 0) {
+      successMessage += '\n\n🔄 Konversi yang dilakukan:';
+      conversions.forEach((item: any) => {
+        successMessage += `\n• ${item._conversion_info.formula}`;
+      });
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Unloading berhasil! Stock jerigen berkurang, stock kiloan bertambah.',
+      message: successMessage,
       data: insertedData,
     });
   } catch (error: any) {
@@ -421,10 +545,10 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE - Hapus unloading (batalkan transaksi)
+// ✅✅✅ DELETE - Complete reversal with conversion support
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 
@@ -449,7 +573,6 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Get unloading data dengan created_at
     const { data: mainUnloading, error: mainError } = await supabase
       .from('gudang_unloading')
       .select('tanggal, cabang_id, created_at')
@@ -480,14 +603,32 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Get semua item dalam batch yang sama (created_at range 1 detik)
     const createdAtDate = new Date(mainUnloading.created_at);
     const startTime = new Date(createdAtDate.getTime() - 1000).toISOString();
     const endTime = new Date(createdAtDate.getTime() + 1000).toISOString();
 
+    // Fetch all items in batch with product info including density
     const { data: batchItems, error: batchError } = await supabase
       .from('gudang_unloading')
-      .select('*')
+      .select(`
+        id,
+        produk_curah_id,
+        produk_jerigen_id,
+        jumlah,
+        produk_jerigen:produk_curah_id (
+          id,
+          nama_produk,
+          stok,
+          satuan,
+          density_kg_per_liter
+        ),
+        produk_kiloan:produk_jerigen_id (
+          id,
+          nama_produk,
+          stok,
+          satuan
+        )
+      `)
       .eq('tanggal', mainUnloading.tanggal)
       .eq('cabang_id', mainUnloading.cabang_id)
       .gte('created_at', startTime)
@@ -508,78 +649,144 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Kembalikan stock untuk semua item dalam batch
-    try {
-      for (const item of batchItems) {
-        // 1. TAMBAH kembali stock produk jerigen (sumber)
-        const { data: produkJerigen, error: fetchError1 } = await supabase
-          .from('produk')
-          .select('stok')
-          .eq('id', item.produk_curah_id)
-          .single();
+    console.log(`🔄 Reversing stock for ${batchItems.length} unloading batch items...`);
 
-        if (fetchError1) {
-          console.error('Error fetching produk jerigen for rollback:', fetchError1);
-          throw fetchError1;
+    const reversalResults = [];
+    
+    for (const item of batchItems) {
+      try {
+        const jumlahStored = parseFloat(item.jumlah.toString()); // This is OUTPUT amount (ML)
+        const produkJerigen: any = item.produk_jerigen;
+        const produkKiloan: any = item.produk_kiloan;
+
+        if (!produkJerigen || !produkKiloan) {
+          console.warn(`⚠️ Missing product data for unloading ${item.id}, skipping...`);
+          continue;
         }
 
-        if (produkJerigen) {
-          const newStokJerigen = parseFloat(produkJerigen.stok) + parseFloat(item.jumlah);
-          
-          const { error: updateError1 } = await supabase
-            .from('produk')
-            .update({ stok: newStokJerigen })
-            .eq('id', item.produk_curah_id);
+        // 🆕 Calculate INPUT amount (might be different due to conversion)
+        let jumlahInput = jumlahStored; // Default: same as stored
+        let conversionInfo = null;
 
-          if (updateError1) throw updateError1;
-        }
-
-        // 2. KURANGI stock produk kiloan (tujuan)
-        const { data: produkKiloan, error: fetchError2 } = await supabase
-          .from('produk')
-          .select('stok')
-          .eq('id', item.produk_jerigen_id)
-          .single();
-
-        if (fetchError2) {
-          console.error('Error fetching produk kiloan for rollback:', fetchError2);
-          throw fetchError2;
-        }
-
-        if (produkKiloan) {
-          const newStokKiloan = parseFloat(produkKiloan.stok) - parseFloat(item.jumlah);
-          
-          if (newStokKiloan < 0) {
-            return NextResponse.json(
-              { 
-                success: false,
-                error: `Tidak dapat membatalkan unloading. Stock produk kiloan tidak mencukupi untuk dikurangi.` 
-              },
-              { status: 400 }
-            );
+        if (produkJerigen.satuan === 'Kg' && produkKiloan.satuan === 'Ml') {
+          // Reverse KG → ML conversion
+          // Stored amount is ML, need to calculate original KG
+          if (produkJerigen.density_kg_per_liter && produkJerigen.density_kg_per_liter > 0) {
+            jumlahInput = (jumlahStored / 1000) * produkJerigen.density_kg_per_liter;
+            conversionInfo = {
+              type: 'ML_TO_KG_REVERSE',
+              stored_ml: jumlahStored,
+              original_kg: jumlahInput,
+              density: produkJerigen.density_kg_per_liter
+            };
+            console.log(`🔄 Reverse conversion: ${jumlahStored} ML → ${jumlahInput.toFixed(2)} KG (density ${produkJerigen.density_kg_per_liter})`);
           }
-          
-          const { error: updateError2 } = await supabase
-            .from('produk')
-            .update({ stok: newStokKiloan })
-            .eq('id', item.produk_jerigen_id);
-
-          if (updateError2) throw updateError2;
+        } else if (produkJerigen.satuan === 'Ml' && produkKiloan.satuan === 'Kg') {
+          // Reverse ML → KG conversion
+          if (produkJerigen.density_kg_per_liter && produkJerigen.density_kg_per_liter > 0) {
+            jumlahInput = (jumlahStored * 1000) / produkJerigen.density_kg_per_liter;
+            conversionInfo = {
+              type: 'KG_TO_ML_REVERSE',
+              stored_kg: jumlahStored,
+              original_ml: jumlahInput,
+              density: produkJerigen.density_kg_per_liter
+            };
+            console.log(`🔄 Reverse conversion: ${jumlahStored} KG → ${jumlahInput.toFixed(2)} ML`);
+          }
         }
+
+        // STEP 1: REVERSE JERIGEN (Add back stock that was removed - use INPUT amount)
+        const currentStokJerigen = parseFloat(produkJerigen.stok.toString());
+        const newStokJerigen = currentStokJerigen + jumlahInput;
+
+        const { error: updateJerigenError } = await supabase
+          .from('produk')
+          .update({ stok: newStokJerigen })
+          .eq('id', item.produk_curah_id);
+
+        if (updateJerigenError) {
+          throw new Error(`Failed to restore jerigen stock: ${updateJerigenError.message}`);
+        }
+
+        console.log(`✅ ${produkJerigen.nama_produk}: ${currentStokJerigen} + ${jumlahInput.toFixed(2)} = ${newStokJerigen.toFixed(2)} ${produkJerigen.satuan}`);
+
+        // STEP 2: REVERSE KILOAN (Remove stock that was added - use STORED amount)
+        const currentStokKiloan = parseFloat(produkKiloan.stok.toString());
+        const newStokKiloan = currentStokKiloan - jumlahStored;
+
+        if (newStokKiloan < 0) {
+          throw new Error(
+            `Tidak dapat menghapus unloading ini!\n` +
+            `Stock ${produkKiloan.nama_produk} akan negatif (${newStokKiloan.toFixed(2)}).\n` +
+            `Kemungkinan produk kiloan sudah digunakan untuk transaksi lain.`
+          );
+        }
+
+        const { error: updateKiloanError } = await supabase
+          .from('produk')
+          .update({ stok: newStokKiloan })
+          .eq('id', item.produk_jerigen_id);
+
+        if (updateKiloanError) {
+          throw new Error(`Failed to reverse kiloan stock: ${updateKiloanError.message}`);
+        }
+
+        console.log(`✅ ${produkKiloan.nama_produk}: ${currentStokKiloan} - ${jumlahStored.toFixed(2)} = ${newStokKiloan.toFixed(2)} ${produkKiloan.satuan}`);
+
+        reversalResults.push({
+          unloading_id: item.id,
+          conversion_info: conversionInfo,
+          jerigen: {
+            nama: produkJerigen.nama_produk,
+            before: currentStokJerigen,
+            after: newStokJerigen,
+            change: `+${jumlahInput.toFixed(2)} ${produkJerigen.satuan}`
+          },
+          kiloan: {
+            nama: produkKiloan.nama_produk,
+            before: currentStokKiloan,
+            after: newStokKiloan,
+            change: `-${jumlahStored.toFixed(2)} ${produkKiloan.satuan}`
+          }
+        });
+
+      } catch (itemError: any) {
+        console.error(`❌ Error reversing stock for item ${item.id}:`, itemError);
+        
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Gagal mengembalikan stock. Operasi dibatalkan.`,
+            details: itemError.message,
+            hint: 'Pastikan produk kiloan belum digunakan untuk transaksi lain.'
+          },
+          { status: 400 }
+        );
       }
-    } catch (rollbackError: any) {
-      console.error('Error during stock rollback:', rollbackError);
-      return NextResponse.json(
-        { 
-          success: false,
-          error: 'Gagal mengembalikan stock. Transaksi dibatalkan.',
-          details: rollbackError.message
-        },
-        { status: 500 }
-      );
     }
 
-    // Delete semua item dalam batch
+    // Delete stock_barang records (CASCADE via foreign key)
+    const { error: deleteStockError } = await supabase
+      .from('stock_barang')
+      .delete()
+      .in('unloading_id', batchItems.map(item => item.id));
+
+    if (deleteStockError) {
+      console.warn('⚠️ Warning: Failed to delete stock records:', deleteStockError);
+    }
+
+    // Log audit trail
+    await logAuditTrail(
+      'DELETE',
+      'gudang_unloading',
+      parsedId,
+      batchItems[0],
+      undefined,
+      undefined,
+      undefined
+    );
+
+    // Delete all unloading records in batch
     const { error: deleteError } = await supabase
       .from('gudang_unloading')
       .delete()
@@ -593,9 +800,12 @@ export async function DELETE(request: NextRequest) {
       throw deleteError;
     }
 
+    console.log('🎯 Unloading deletion complete - all stock reversed successfully');
+
     return NextResponse.json({
       success: true,
-      message: 'Unloading berhasil dibatalkan dan stock dikembalikan',
+      message: `Unloading berhasil dibatalkan! ${reversalResults.length} items dikembalikan.`,
+      details: reversalResults
     });
   } catch (error: any) {
     console.error('Error in DELETE /api/gudang/unloading:', error);

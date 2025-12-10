@@ -2,7 +2,7 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 // Define interface for detail_penjualan
 interface DetailPenjualan {
@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   console.log('🚀 [LAPORAN PENJUALAN API] Starting...');
   
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const searchParams = request.nextUrl.searchParams;
 
     // Filter parameters
@@ -373,7 +373,7 @@ export async function POST(request: NextRequest) {
   console.log('🚀 [POST LAPORAN PENJUALAN API] Starting...');
   
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const body = await request.json();
     const { type, startDate, endDate } = body;
 

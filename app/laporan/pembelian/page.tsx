@@ -27,6 +27,7 @@ export default function LaporanPembelian() {
 
   const [showFilters, setShowFilters] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState<PembelianData | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchLaporan();
@@ -34,27 +35,53 @@ export default function LaporanPembelian() {
 
   const fetchLaporan = async () => {
   setLoading(true);
+  setError(null);
   try {
     const params = new URLSearchParams();
     Object.entries(filters).forEach(([key, value]) => {
       if (value) params.append(key, value);
     });
 
-    console.log('🔍 Fetching with params:', params.toString()); // DEBUG
-
     const response = await fetch(`/api/laporan/pembelian?${params}`);
-    const result = await response.json();
-    
-    console.log('✅ API Response:', result); // DEBUG
-    
-    if (result.success) {
-      console.log('📦 Data:', result.data); // DEBUG
-      console.log('📊 Summary:', result.summary); // DEBUG
-      setData(result.data);
-      setSummary(result.summary);
+
+    if (!response.ok) {
+      let errorMessage = 'Gagal memuat laporan pembelian';
+
+      if (response.status === 401) {
+        errorMessage = 'Sesi login telah berakhir. Silakan login kembali.';
+      } else if (response.status === 403) {
+        errorMessage = 'Anda tidak memiliki akses untuk melihat laporan pembelian.';
+      } else if (response.status === 500) {
+        errorMessage = 'Server mengalami masalah. Silakan coba lagi dalam beberapa saat.';
+      } else {
+        const errorJson = await response.json().catch(() => null);
+        if (errorJson?.error) {
+          errorMessage += ': ' + errorJson.error;
+        }
+      }
+
+      throw new Error(errorMessage);
     }
-  } catch (error) {
-    console.error('❌ Error:', error);
+
+    const result = await response.json();
+
+    if (result.success === false) {
+      throw new Error(result.error || 'Gagal memuat laporan pembelian');
+    }
+
+    setData(result.data || []);
+    setSummary(result.summary);
+  } catch (error: any) {
+    console.error('Error fetching pembelian report:', error);
+    let errorMessage = 'Terjadi kesalahan saat memuat data. Silakan periksa koneksi internet Anda.';
+    if (error.message?.includes('NetworkError') || error.message?.includes('ECONNREFUSED')) {
+      errorMessage = 'Koneksi internet bermasalah. Tidak dapat memuat laporan pembelian.';
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    setError(errorMessage);
+    setData([]);
+    setSummary(null);
   } finally {
     setLoading(false);
   }
@@ -125,6 +152,23 @@ const getStatusColor = (status: string) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
       <div className="max-w-7xl mx-auto">
+
+        {/* Error Display */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center justify-between mb-4 sm:mb-6">
+            <div className="flex items-center gap-3">
+              <span className="text-red-500">⚠️</span>
+              <p className="text-sm font-medium">{error}</p>
+            </div>
+            <button
+              onClick={() => setError(null)}
+              className="text-red-700 hover:text-red-900 font-bold text-lg"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
         {/* Header - sama seperti sebelumnya */}
         <div className="mb-8">
           <div className="flex items-center justify-between">

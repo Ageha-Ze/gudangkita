@@ -1,6 +1,6 @@
 // app/api/persediaan/stock-barang/fix-comprehensive/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 /**
  * Comprehensive Stock Fix
@@ -8,7 +8,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
  */
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const body = await request.json();
     const { mode } = body; // 'check' or 'fix'
 

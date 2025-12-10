@@ -1,6 +1,6 @@
 // app/api/persediaan/stock-barang/update-harga/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 /**
  * POST - Update HPP & Harga Jual
@@ -9,7 +9,7 @@ import { supabaseServer } from '@/lib/supabaseServer';
  */
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const body = await request.json();
 
     const {

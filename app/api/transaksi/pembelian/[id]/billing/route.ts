@@ -2,7 +2,7 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 export async function POST(
   request: NextRequest,
@@ -11,7 +11,7 @@ export async function POST(
   try {
     const { id: pembelian_id } = await context.params;
     const body = await request.json();
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
 
     console.log('🔄 Processing billing for pembelian:', pembelian_id);
 

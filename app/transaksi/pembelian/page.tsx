@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, FileText, Printer, Trash2, Eye } from 'lucide-react';
+import { usePermissions, ReadOnlyBanner } from '@/components/PermissionGuard';
+import PermissionGuard from '@/components/PermissionGuard';
 import ModalTambahPembelian from './ModalTambahPembelian';
 import ModalPrintNotaPembelian from './ModalPrintNotaPembelian';
 
@@ -40,9 +42,20 @@ export default function PembelianPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [showModal, setShowModal, ] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const [showModalPrint, setShowModalPrint] = useState(false);
   const [selectedPembelianId, setSelectedPembelianId] = useState<number>(0);
+  const [error, setError] = useState<string | null>(null);
+
+  // Permission guards
+  const { canView, canCreate, canEdit, canDelete } = usePermissions({
+    canView: 'purchase.read',
+    canCreate: 'purchase.manage',
+    canEdit: 'purchase.manage',
+    canDelete: 'purchase.manage',
+  });
+
+  const isReadOnly = canView && !canCreate;
 
   useEffect(() => {
     fetchPembelians();
@@ -51,46 +64,138 @@ export default function PembelianPage() {
   const fetchPembelians = async () => {
     try {
       setLoading(true);
+      setError(null); // Reset error sebelum fetch
+
       const res = await fetch(`/api/transaksi/pembelian?page=${page}&limit=10&search=${search}`);
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+
       const json = await res.json();
-      
+
+      if (json.success === false) {
+        throw new Error(json.error || 'Gagal memuat data pembelian');
+      }
+
       setPembelians(json.data || []);
       setTotalPages(json.pagination?.totalPages || 1);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching pembelians:', error);
+      let errorMessage = 'Terjadi kesalahan saat memuat data pembelian. Silakan coba lagi.';
+
+      if (error.message?.includes('HTTP 401')) {
+        errorMessage = 'Sesi login telah berakhir. Silakan login kembali.';
+        // Optional: redirect to login
+        // router.push('/login');
+      } else if (error.message?.includes('HTTP 403')) {
+        errorMessage = 'Anda tidak memiliki akses untuk melihat data pembelian.';
+      } else if (error.message?.includes('HTTP 500')) {
+        errorMessage = 'Server mengalami masalah. Silakan coba lagi dalam beberapa saat.';
+      } else if (error.message?.includes('ECONNREFUSED') || error.message?.includes('NetworkError')) {
+        errorMessage = 'Koneksi internet bermasalah. Periksa koneksi Anda.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      setError(errorMessage);
+      setPembelians([]);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async (pembelianId: number) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus data ini?\n\nSemua data terkait (detail barang, cicilan, hutang) akan dihapus dan saldo kas akan dikembalikan.')) return;
+    // Improved Indonesian confirmation dialog
+    const confirmMessage = `🎯 KONFIRMASI PENGHAPUSAN DATA
+                
+📄 Nota Supplier: ${pembelians.find(p => p.id === pembelianId)?.nota_supplier || 'N/A'}
 
-    console.log('Deleting pembelian with ID:', pembelianId);
+⚠️  PERINGATAN PENTING:
+• Semua detail barang akan dihapus
+• Data cicilan akan dibatalkan
+• Hutang supplier akan dihapus
+• Saldo kas akan dikembalikan otomatis
+
+❓ Yakin ingin menghapus transaksi ini?`;
+
+    if (!confirm(confirmMessage)) return;
 
     if (!pembelianId) {
-      alert('ID tidak valid');
+      setError('ID pembelian tidak valid. Silakan refresh halaman dan coba lagi.');
       return;
     }
+
+    setLoading(true);
+    setError(null);
 
     try {
       const res = await fetch(`/api/transaksi/pembelian/${pembelianId}`, {
         method: 'DELETE',
       });
 
+      if (!res.ok) {
+        let errorMessage = 'Gagal menghapus data pembelian';
+
+        if (res.status === 401) {
+          errorMessage = 'Sesi login telah berakhir. Silakan login kembali.';
+        } else if (res.status === 403) {
+          errorMessage = 'Anda tidak memiliki akses untuk menghapus data ini.';
+        } else if (res.status === 404) {
+          errorMessage = 'Data pembelian tidak ditemukan. Mungkin sudah dihapus sebelumnya.';
+        } else if (res.status === 409) {
+          errorMessage = 'Data tidak dapat dihapus karena masih memiliki referensi aktif.';
+        } else if (res.status >= 500) {
+          errorMessage = 'Server mengalami masalah. Silakan coba lagi dalam beberapa saat.';
+        }
+
+        const json = await res.json().catch(() => null);
+        if (json?.error) {
+          errorMessage += ': ' + json.error;
+        }
+
+        setError(errorMessage);
+        return;
+      }
+
       const json = await res.json();
 
-      if (res.ok) {
-        console.log('Delete response:', json);
-        alert('Data berhasil dihapus dan saldo kas dikembalikan');
-        fetchPembelians();
+      if (json.success) {
+        console.log('✅ Delete successful:', json);
+        // Success message
+        const successDiv = document.createElement('div');
+        successDiv.className = 'fixed top-4 right-4 bg-green-50 border border-green-200 text-green-700 px-6 py-4 rounded-lg shadow-lg z-50 flex items-center gap-3';
+        successDiv.innerHTML = `
+          <span class="text-green-600">✅</span>
+          <div>
+            <p class="font-semibold">Berhasil Dihapus!</p>
+            <p class="text-sm">Data pembelian telah dihapus dan saldo kas dikembalikan.</p>
+          </div>
+          <button onclick="this.parentElement.remove()" class="text-green-700 hover:text-green-900 font-bold">×</button>
+        `;
+        document.body.appendChild(successDiv);
+
+        // Auto-remove after 5 seconds
+        setTimeout(() => successDiv.remove(), 5000);
+
+        // Refresh data
+        await fetchPembelians();
       } else {
-        console.warn('Delete failed:', json);
-        alert('Gagal menghapus data: ' + (json.error || 'Unknown error'));
+        setError(json.error || 'Gagal menghapus data pembelian');
       }
-    } catch (error) {
-      console.error('Error deleting:', error);
-      alert('Terjadi kesalahan saat menghapus');
+
+    } catch (error: any) {
+      console.error('❌ Delete error:', error);
+      let errorMessage = 'Terjadi kesalahan saat menghapus data. Silakan periksa koneksi internet Anda.';
+
+      if (error.message?.includes('NetworkError') || error.message?.includes('ECONNREFUSED')) {
+        errorMessage = 'Koneksi internet bermasalah. Data tidak dapat dihapus.';
+      }
+
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -124,6 +229,25 @@ export default function PembelianPage() {
         </div>
       </div>
 
+      {/* Read-only banner for Keuangan users */}
+      {isReadOnly && <ReadOnlyBanner />}
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center justify-between mb-4 sm:mb-6">
+          <div className="flex items-center gap-3">
+            <span className="text-red-500">⚠️</span>
+            <p className="text-sm font-medium">{error}</p>
+          </div>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-700 hover:text-red-900 font-bold text-lg"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* Search & Add Button */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 bg-white p-3 sm:p-4 rounded-lg shadow-md">
         <div className="flex items-center gap-2 flex-1 sm:flex-none min-w-0">
@@ -139,13 +263,15 @@ export default function PembelianPage() {
             placeholder="Cari..."
           />
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="w-full sm:w-auto px-4 sm:px-6 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2 whitespace-nowrap"
-        >
-          <Plus size={18} />
-          Tambah
-        </button>
+        {canCreate && (
+          <button
+            onClick={() => setShowModal(true)}
+            className="w-full sm:w-auto px-4 sm:px-6 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2 whitespace-nowrap"
+          >
+            <Plus size={18} />
+            Tambah
+          </button>
+        )}
       </div>
 
       {/* Mobile Cards View */}
@@ -220,18 +346,22 @@ export default function PembelianPage() {
                   <Eye size={16} />
                   Detail
                 </button>
-                <button
-  onClick={() => handlePrint(item.id)}
-  className="flex items-center justify-center gap-2 px-3 py-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition text-sm"
->
-  <Printer size={16} />
-</button>
-                <button
-                  onClick={() => handleDelete(item.id)}
-                  className="flex items-center justify-center gap-2 px-3 py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition text-sm"
-                >
-                  <Trash2 size={16} />
-                </button>
+                {canEdit && (
+                  <button
+                    onClick={() => handlePrint(item.id)}
+                    className="flex items-center justify-center gap-2 px-3 py-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition text-sm"
+                  >
+                    <Printer size={16} />
+                  </button>
+                )}
+                {canDelete && (
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    className="flex items-center justify-center gap-2 px-3 py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition text-sm"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </div>
             </div>
           ))
@@ -312,20 +442,24 @@ export default function PembelianPage() {
                       >
                         <Eye size={18} />
                       </button>
-                      <button
-  onClick={() => handlePrint(item.id)}
-  className="text-blue-600 hover:text-blue-800 transition"
-  title="Print"
->
-  <Printer size={18} />
-</button>
-                      <button
-                        onClick={() => handleDelete(item.id)}
-                        className="text-red-600 hover:text-red-800 transition"
-                        title="Delete"
-                      >
-                        <Trash2 size={18} />
-                      </button>
+                      {canEdit && (
+                        <button
+                          onClick={() => handlePrint(item.id)}
+                          className="text-blue-600 hover:text-blue-800 transition"
+                          title="Print"
+                        >
+                          <Printer size={18} />
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          onClick={() => handleDelete(item.id)}
+                          className="text-red-600 hover:text-red-800 transition"
+                          title="Delete"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

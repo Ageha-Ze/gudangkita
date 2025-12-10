@@ -1,11 +1,11 @@
 'use server';
 
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseServer } from '@/lib/supabaseServer';
+import { supabaseAuthenticated } from '@/lib/supabaseServer';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const body = await request.json();
     const { item_id, jumlah, hpp, subtotal } = body;
 
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const supabase = await supabaseServer();
+    const supabase = await supabaseAuthenticated();
     const { searchParams } = new URL(request.url);
     const detailId = searchParams.get('detailId');
 
@@ -50,6 +50,32 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     // Fix: Await params (even if not used, for consistency and to avoid type issues)
     const { id } = await params;
 
+    // Step 1: Get detail info for stock reversal
+    const { data: detail, error: getError } = await supabase
+      .from('detail_produksi')
+      .select('item_id, jumlah')
+      .eq('id', parseInt(detailId))
+      .single();
+
+    if (getError || !detail) {
+      throw new Error('Detail item not found');
+    }
+
+    // Step 2: Return material stock (+jumlah)
+    const { error: stockError } = await supabase
+      .from('produk')
+      .update({
+        stok: (stok: any) => Number(stok) + parseFloat(detail.jumlah?.toString() || '0'),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', detail.item_id);
+
+    if (stockError) {
+      console.error('Failed to restore stock for detail deletion:', stockError);
+      throw stockError;
+    }
+
+    // Step 3: Delete the detail record
     const { error } = await supabase
       .from('detail_produksi')
       .delete()
@@ -57,7 +83,12 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     if (error) throw error;
 
-    return NextResponse.json({ message: 'Deleted' });
+    console.log(`✅ Detail deleted and stock restored: +${detail.jumlah} to item ${detail.item_id}`);
+
+    return NextResponse.json({
+      success: true,
+      message: 'Detail item deleted and stock restored'
+    });
   } catch (error: any) {
     console.error('Error deleting detail:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
