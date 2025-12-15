@@ -255,99 +255,146 @@ export default function PenjualanListPage() {
         )}
       </div>
 
-      {/* Mobile Cards View */}
-      <div className="block lg:hidden space-y-3">
+      {/* Mobile Cards */}
+      <div className="lg:hidden space-y-4">
         {loading ? (
-          <div className="bg-white rounded-xl shadow-lg p-8 text-center">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-              <p className="text-gray-500 font-medium">Memuat data...</p>
-            </div>
+          <div className="flex flex-col items-center gap-3 py-8">
+            <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-gray-500 font-medium">Memuat data...</p>
           </div>
         ) : penjualans.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-lg p-8 text-center">
-            <p className="text-gray-500">Tidak ada data</p>
+          <div className="text-center py-8 text-gray-500">
+            Tidak ada data
           </div>
         ) : (
-          penjualans.map((item) => (
-            <div key={item.id} className="bg-white rounded-xl shadow-lg p-4 border-l-4 border-indigo-500">
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex-1">
-                  <div className="font-semibold text-indigo-700">{item.nota_penjualan}</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {new Date(item.tanggal).toLocaleDateString('id-ID')}
-                  </div>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium text-center ${
-                    item.status === 'billed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {item.status === 'billed' ? 'Billed' : 'Pending'}
-                  </span>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium text-center ${
-                    item.status_pembayaran === 'Lunas' ? 'bg-green-100 text-green-800' :
-                    item.status_pembayaran === 'Cicil' ? 'bg-blue-100 text-blue-800' :
-                    'bg-red-100 text-red-800'
-                  }`}>
-                    {item.status_pembayaran}
-                  </span>
-                </div>
+          penjualans.map((item, index) => (
+            <div key={item.id} className="bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-600 rounded-2xl shadow-xl p-5 text-white relative overflow-hidden">
+              {/* Background Pattern */}
+              <div className="absolute inset-0 opacity-10">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white rounded-full -translate-y-16 translate-x-16"></div>
+                <div className="absolute bottom-0 left-0 w-24 h-24 bg-white rounded-full translate-y-12 -translate-x-12"></div>
               </div>
 
-              <div className="space-y-2 text-sm mb-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Customer:</span>
-                  <span className="font-medium">{item.customer?.nama || '-'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Sales:</span>
-                  <span className="font-medium">{item.pegawai?.nama || '-'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Cabang:</span>
-                  <span className="font-medium">{item.pegawai?.cabang?.nama_cabang || '-'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Total:</span>
-                  <span className="font-semibold text-indigo-700">
-                    Rp. {item.total.toLocaleString('id-ID')}
+              {/* Content */}
+              <div className="relative z-10">
+                {/* Header */}
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <p className="text-xs text-cyan-100 mb-1">📋 Nota</p>
+                    <p className="font-mono text-base font-bold">{item.nota_penjualan}</p>
+                  </div>
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                    item.status === 'billed' ? 'bg-green-400 text-green-900' : 'bg-yellow-400 text-yellow-900'
+                  }`}>
+                    {item.status === 'billed' ? 'Selesai' : 'Pending'}
                   </span>
                 </div>
-                {item.status === 'billed' && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Sisa Tagihan:</span>
-                    <span className={`font-semibold ${
-                      item.sisa_tagihan > 0 ? 'text-red-600' : 'text-green-600'
+                
+                {/* Customer & Sales Info */}
+                <div className="space-y-2.5 mb-4">
+                  <div className="flex items-start gap-2">
+                    <span className="text-lg">👤</span>
+                    <div className="flex-1">
+                      <p className="text-xs text-cyan-100">Trainer</p>
+                      <p className="text-sm font-semibold">{item.pegawai?.nama || '-'}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-start gap-2">
+                    <span className="text-lg">🏢</span>
+                    <div className="flex-1">
+                      <p className="text-xs text-cyan-100">Customer</p>
+                      <p className="text-sm font-semibold">{item.customer?.nama || '-'}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">📅</span>
+                      <div>
+                        <p className="text-xs text-cyan-100">Tanggal</p>
+                        <p className="text-sm font-semibold">{new Date(item.tanggal).toLocaleDateString('id-ID')}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">⏰</span>
+                      <div>
+                        <p className="text-xs text-cyan-100">Durasi</p>
+                        <p className="text-sm font-semibold">60 menit</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Divider */}
+                <div className="h-px bg-white/20 my-4"></div>
+
+                {/* Payment Info */}
+                <div className="space-y-2 mb-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-cyan-100">Total</span>
+                    <span className="text-xl font-bold">Rp. {item.total.toLocaleString('id-ID')}</span>
+                  </div>
+                  {item.status === 'billed' && (
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm text-cyan-100">Sisa Tagihan</span>
+                      <span className={`text-base font-bold ${
+                        item.sisa_tagihan > 0 ? 'text-red-300' : 'text-green-300'
+                      }`}>
+                        Rp. {item.sisa_tagihan.toLocaleString('id-ID')}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-cyan-100">Status Pembayaran</span>
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                      item.status_pembayaran === 'Lunas' ? 'bg-green-400 text-green-900' :
+                      item.status_pembayaran === 'Cicil' ? 'bg-blue-400 text-blue-900' :
+                      'bg-red-400 text-red-900'
                     }`}>
-                      Rp. {item.sisa_tagihan.toLocaleString('id-ID')}
+                      {item.status_pembayaran}
                     </span>
                   </div>
-                )}
-              </div>
+                </div>
 
-              <div className="flex gap-2 pt-3 border-t border-gray-200">
-                <button
-                  onClick={() => router.push(`/transaksi/penjualan/${item.id}`)}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition text-sm"
-                >
-                  <Eye size={16} />
-                  Detail
-                </button>
-                {canEdit && (
+                {/* Action Buttons */}
+                <div className="flex gap-2">
                   <button
-                    onClick={() => handlePrint(item.id)}
-                    className="flex items-center justify-center gap-2 px-3 py-2 text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg transition text-sm"
+                    onClick={() => router.push(`/transaksi/penjualan/${item.id}`)}
+                    className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white px-3 py-2.5 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 border border-white/30"
                   >
-                    <Printer size={16} />
+                    <Eye size={16} />
+                    Detail
                   </button>
-                )}
-                {canDelete && (
-                  <button
-                    onClick={() => handleDelete(item.id)}
-                    className="flex items-center justify-center gap-2 px-3 py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition text-sm"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  {canEdit && (
+                    <button
+                      onClick={() => handlePrint(item.id)}
+                      className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white px-3 py-2.5 rounded-xl text-sm font-semibold transition border border-white/30"
+                    >
+                      <Printer size={16} />
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      onClick={() => handleDelete(item.id)}
+                      className="bg-red-500/80 hover:bg-red-600 text-white px-3 py-2.5 rounded-xl text-sm font-semibold transition border border-red-400"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Check Icon for Completed */}
+                {item.sisa_tagihan === 0 && item.status === 'billed' && (
+                  <div className="mt-3 flex items-center gap-2 text-green-300">
+                    <div className="w-5 h-5 rounded-full bg-green-400 flex items-center justify-center">
+                      <svg className="w-3 h-3 text-green-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <span className="text-xs font-semibold">Sesi Telah Selesai</span>
+                  </div>
                 )}
               </div>
             </div>

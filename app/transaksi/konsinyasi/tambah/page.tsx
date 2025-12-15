@@ -492,55 +492,136 @@ export default function TambahKonsinyasiPage() {
         </div>
 
         {detailItems.length > 0 && (
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <h2 className="text-lg font-bold text-gray-800 mb-4">Detail Barang</h2>
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead className="bg-indigo-100">
-                  <tr>
-                    <th className="px-4 py-3 text-left border">Produk</th>
-                    <th className="px-4 py-3 text-right border">Jumlah</th>
-                    <th className="px-4 py-3 text-right border">Harga Konsinyasi</th>
-                    <th className="px-4 py-3 text-right border">Harga Jual Toko</th>
-                    <th className="px-4 py-3 text-right border">Subtotal</th>
-                    <th className="px-4 py-3 text-center border">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {detailItems.map((item, index) => (
-                    <tr key={index} className="border-b hover:bg-indigo-50">
-                      <td className="px-4 py-3 border">{item.nama_produk}</td>
-                      <td className="px-4 py-3 text-right border">{item.jumlah_titip}</td>
-                      <td className="px-4 py-3 text-right border">
-                        Rp {item.harga_konsinyasi.toLocaleString('id-ID')}
-                      </td>
-                      <td className="px-4 py-3 text-right border">
-                        Rp {item.harga_jual_toko.toLocaleString('id-ID')}
-                      </td>
-                      <td className="px-4 py-3 text-right border">
-                        Rp {item.subtotal.toLocaleString('id-ID')}
-                      </td>
-                      <td className="px-4 py-3 text-center border">
-                        <button
-                          onClick={() => handleRemoveItem(index)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </td>
+          <>
+            {/* Desktop Table */}
+            <div className="hidden lg:block bg-white rounded-xl shadow-lg p-6">
+              <h2 className="text-lg font-bold text-gray-800 mb-4">Detail Barang</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead className="bg-indigo-100">
+                    <tr>
+                      <th className="px-4 py-3 text-left border">Produk</th>
+                      <th className="px-4 py-3 text-right border">Jumlah</th>
+                      <th className="px-4 py-3 text-right border">Harga Konsinyasi</th>
+                      <th className="px-4 py-3 text-right border">Harga Jual Toko</th>
+                      <th className="px-4 py-3 text-right border">Subtotal</th>
+                      <th className="px-4 py-3 text-center border">Action</th>
                     </tr>
-                  ))}
-                  <tr className="bg-indigo-50 font-bold">
-                    <td colSpan={4} className="px-4 py-3 text-right border">Total:</td>
-                    <td className="px-4 py-3 text-right border">
-                      Rp {calculateTotal().toLocaleString('id-ID')}
-                    </td>
-                    <td className="border"></td>
-                  </tr>
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {detailItems.map((item, index) => (
+                      <tr key={index} className="border-b hover:bg-indigo-50">
+                        <td className="px-4 py-3 border">{item.nama_produk}</td>
+                        <td className="px-4 py-3 text-right border">{item.jumlah_titip}</td>
+                        <td className="px-4 py-3 text-right border">
+                          Rp {item.harga_konsinyasi.toLocaleString('id-ID')}
+                        </td>
+                        <td className="px-4 py-3 text-right border">
+                          Rp {item.harga_jual_toko.toLocaleString('id-ID')}
+                        </td>
+                        <td className="px-4 py-3 text-right border">
+                          Rp {item.subtotal.toLocaleString('id-ID')}
+                        </td>
+                        <td className="px-4 py-3 text-center border">
+                          <button
+                            onClick={() => handleRemoveItem(index)}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="bg-indigo-50 font-bold">
+                      <td colSpan={4} className="px-4 py-3 text-right border">Total:</td>
+                      <td className="px-4 py-3 text-right border">
+                        Rp {calculateTotal().toLocaleString('id-ID')}
+                      </td>
+                      <td className="border"></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+
+            {/* Mobile Cards */}
+            <div className="lg:hidden space-y-4">
+              <div className="bg-white rounded-xl shadow-lg p-4">
+                <h2 className="text-lg font-bold text-gray-800 mb-4">Detail Barang</h2>
+              </div>
+              {detailItems.map((item, index) => (
+                <div key={index} className="bg-gradient-to-br from-emerald-400 via-green-500 to-teal-600 rounded-2xl shadow-xl p-5 text-white relative overflow-hidden">
+                  {/* Background Pattern */}
+                  <div className="absolute inset-0 opacity-10">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-white rounded-full -translate-y-16 translate-x-16"></div>
+                    <div className="absolute bottom-0 left-0 w-24 h-24 bg-white rounded-full translate-y-12 -translate-x-12"></div>
+                  </div>
+
+                  {/* Content */}
+                  <div className="relative z-10">
+                    {/* Header */}
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <p className="text-xs text-emerald-100 mb-1">🗂️ Item #{index + 1}</p>
+                        <p className="font-mono text-base font-bold">{item.nama_produk}</p>
+                      </div>
+                      <div>
+                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500 text-emerald-900">
+                          Jml: {item.jumlah_titip}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Item Details */}
+                    <div className="space-y-2.5 mb-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">💰</span>
+                        <div>
+                          <p className="text-xs text-emerald-100">Harga Konsinyasi</p>
+                          <p className="text-sm font-semibold">Rp. {item.harga_konsinyasi.toLocaleString('id-ID')}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">🏪</span>
+                        <div>
+                          <p className="text-xs text-emerald-100">Harga Jual Toko</p>
+                          <p className="text-sm font-semibold">Rp. {item.harga_jual_toko.toLocaleString('id-ID')}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Divider */}
+                    <div className="h-px bg-white/20 my-4"></div>
+
+                    {/* Footer with subtotal and action */}
+                    <div className="flex justify-between items-center mb-4">
+                      <div>
+                        <span className="text-sm text-emerald-100">Subtotal</span>
+                        <p className="text-xl font-bold">Rp. {item.subtotal.toLocaleString('id-ID')}</p>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveItem(index)}
+                        className="bg-red-500/80 hover:bg-red-600 text-white px-3 py-2.5 rounded-xl text-sm font-semibold transition border border-red-400"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Total Summary for Mobile */}
+              <div className="bg-white rounded-xl shadow-lg p-4 lg:hidden">
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-bold text-gray-800">Total Seluruhnya:</span>
+                  <span className="text-xl font-bold text-emerald-600">
+                    Rp {calculateTotal().toLocaleString('id-ID')}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </>
         )}
 
         <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">

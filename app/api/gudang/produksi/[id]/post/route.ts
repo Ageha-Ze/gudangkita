@@ -91,10 +91,12 @@ export async function POST(
 
       console.log(`  - ${item.nama_produk}: stock=${currentStok}, needed=${needed}`);
 
-      if (currentStok < needed) {
+      // 🔒 STRICT STOCK VALIDATION: Prevent ANY production that would result in negative stock
+      // This ensures no overselling through production process
+      if (currentStok <= 0 || currentStok < needed) {
         throw new Error(
-          `❌ Stock ${item.nama_produk} tidak mencukupi!\n` +
-          `Tersedia: ${currentStok} | Dibutuhkan: ${needed}`
+          `❌ Stock ${item.nama_produk} tidak mencukupi untuk produksi!\n` +
+          `Tersedia: ${currentStok} | Dibutuhkan: ${needed} | Status: ${currentStok <= 0 ? 'STOK HABIS' : 'TIDAK CUKUP'}`
         );
       }
     }

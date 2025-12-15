@@ -91,7 +91,8 @@ export default function HistoryCicilan({
     <div className="bg-white p-6 rounded shadow mt-6">
       <h2 className="font-bold text-lg mb-4 underline">History Cicilan Penjualan</h2>
 
-      <div className="overflow-x-auto">
+      {/* Desktop Table */}
+      <div className="hidden lg:block overflow-x-auto">
         <table className="w-full">
           <thead className="bg-cyan-100">
             <tr>
@@ -139,6 +140,96 @@ export default function HistoryCicilan({
             ))}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile Cards */}
+      <div className="lg:hidden space-y-4">
+        {loading ? (
+          <div className="flex flex-col items-center gap-3 py-8">
+            <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-gray-500 font-medium">Memuat data...</p>
+          </div>
+        ) : cicilans.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            Tidak ada data cicilan
+          </div>
+        ) : (
+          cicilans.map((cicilan) => (
+            <div key={cicilan.id} className="bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-600 rounded-2xl shadow-xl p-5 text-white relative overflow-hidden">
+              {/* Background Pattern */}
+              <div className="absolute inset-0 opacity-10">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white rounded-full -translate-y-16 translate-x-16"></div>
+                <div className="absolute bottom-0 left-0 w-24 h-24 bg-white rounded-full translate-y-12 -translate-x-12"></div>
+              </div>
+
+              {/* Content */}
+              <div className="relative z-10">
+                {/* Header */}
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <p className="text-xs text-cyan-100 mb-1">📅 Tanggal Cicilan</p>
+                    <p className="font-mono text-base font-bold">{new Date(cicilan.tanggal_cicilan).toLocaleDateString('id-ID')}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-cyan-100 mb-1">Type</p>
+                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-400 text-green-900">
+                      Cicilan
+                    </span>
+                  </div>
+                </div>
+
+                {/* Cicilan Info */}
+                <div className="space-y-2.5 mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🏦</span>
+                    <div className="flex-1">
+                      <p className="text-xs text-cyan-100">Rekening</p>
+                      <p className="text-sm font-semibold">{cicilan.kas?.nama_kas || '-'}</p>
+                    </div>
+                  </div>
+
+                  {cicilan.keterangan && (
+                    <div className="flex items-start gap-2">
+                      <span className="text-lg">📝</span>
+                      <div className="flex-1">
+                        <p className="text-xs text-cyan-100">Keterangan</p>
+                        <p className="text-sm font-semibold">{cicilan.keterangan}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Divider */}
+                <div className="h-px bg-white/20 my-4"></div>
+
+                {/* Amount */}
+                <div className="flex justify-between items-center mb-4">
+                  <span className="text-sm text-cyan-100">Jumlah Cicilan</span>
+                  <span className="text-2xl font-bold">
+                    Rp. {parseFloat(cicilan.jumlah_cicilan.toString()).toLocaleString('id-ID')}
+                  </span>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleEdit(cicilan)}
+                    className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white px-3 py-2.5 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 border border-white/30"
+                  >
+                    <Edit size={16} />
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDelete(cicilan.id)}
+                    className="bg-red-500/80 hover:bg-red-600 text-white px-3 py-2.5 rounded-xl text-sm font-semibold transition border border-red-400"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       {/* Modal Edit */}

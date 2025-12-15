@@ -322,7 +322,8 @@ export default function DetailPenjualanPage({
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Desktop Table */}
+          <div className="hidden lg:block overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="bg-gradient-to-r from-gray-50 to-gray-100">
@@ -381,6 +382,95 @@ export default function DetailPenjualanPage({
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile Cards for Detail Barang */}
+          <div className="lg:hidden space-y-4 p-4">
+            {loading ? (
+              <div className="flex flex-col items-center gap-3 py-8">
+                <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-gray-500 font-medium">Memuat data...</p>
+              </div>
+            ) : penjualan.detail_penjualan.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <Package className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                <p>Belum ada barang</p>
+              </div>
+            ) : (
+              penjualan.detail_penjualan.map((item, index) => (
+                <div key={item.id} className="bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-600 rounded-2xl shadow-xl p-5 text-white relative overflow-hidden">
+                  {/* Background Pattern */}
+                  <div className="absolute inset-0 opacity-10">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-white rounded-full -translate-y-16 translate-x-16"></div>
+                    <div className="absolute bottom-0 left-0 w-24 h-24 bg-white rounded-full translate-y-12 -translate-x-12"></div>
+                  </div>
+
+                  {/* Content */}
+                  <div className="relative z-10">
+                    {/* Header */}
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <p className="text-xs text-cyan-100 mb-1">📋 Kode</p>
+                        <p className="font-mono text-base font-bold">{item.produk?.kode_produk || '-'}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-cyan-100 mb-1">Qty</p>
+                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-400 text-green-900">
+                          {parseFloat(item.jumlah.toString()).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Product Info */}
+                    <div className="space-y-2.5 mb-4">
+                      <div className="flex items-start gap-2">
+                        <span className="text-lg">📦</span>
+                        <div className="flex-1">
+                          <p className="text-xs text-cyan-100">Nama Produk</p>
+                          <p className="text-sm font-semibold">{item.produk?.nama_produk || '-'}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">💰</span>
+                        <div>
+                          <p className="text-xs text-cyan-100">Harga</p>
+                          <p className="text-sm font-semibold">Rp. {item.harga.toLocaleString('id-ID')}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Divider */}
+                    <div className="h-px bg-white/20 my-4"></div>
+
+                    {/* Subtotal */}
+                    <div className="flex justify-between items-center mb-4">
+                      <span className="text-sm text-cyan-100">Subtotal</span>
+                      <span className="text-xl font-bold">Rp. {item.subtotal.toLocaleString('id-ID')}</span>
+                    </div>
+
+                    {/* Action Buttons */}
+                    {!isBilled && (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleEditBarang(item)}
+                          className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white px-3 py-2.5 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 border border-white/30"
+                        >
+                          <Edit size={16} />
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteItem(item.id)}
+                          className="bg-red-500/80 hover:bg-red-600 text-white px-3 py-2.5 rounded-xl text-sm font-semibold transition border border-red-400"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
 
           {/* Summary Cards */}

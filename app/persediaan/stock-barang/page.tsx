@@ -92,18 +92,40 @@ export default function StockBarangPage() {
     }
   };
 
-  const handleManageStock = (stock: StockItem | null = null) => {
-    setSelectedStock(stock ? {
-      produk_id: stock.produk_id,
-      nama_produk: stock.nama_produk,
-      kode_produk: stock.kode_produk,
-      satuan: stock.satuan,
-      stock: stock.stock,
-      hpp: stock.hpp,
-      cabang_id: stock.cabang_id,
-      cabang: stock.cabang,
-    } : null); // Pass null for bulk operations
-    setModalMode('add'); // Default mode, user can change within modal
+  const [initialModalValues, setInitialModalValues] = useState<{
+    produkId?: number;
+    cabangId?: number;
+    hpp?: number;
+    hargaJual?: number;
+    persentase?: number;
+  }>({});
+
+  const handleManageStock = (stock: StockItem | null = null, modalMode: 'add' | 'remove' | 'adjust' | 'price' = 'add') => {
+    if (stock) {
+      // Clicked Manage on a specific stock item - pre-fill with stock data
+      setSelectedStock({
+        produk_id: stock.produk_id,
+        nama_produk: stock.nama_produk,
+        kode_produk: stock.kode_produk,
+        satuan: stock.satuan,
+        stock: stock.stock,
+        hpp: stock.hpp,
+        cabang_id: stock.cabang_id,
+        cabang: stock.cabang,
+      });
+      setInitialModalValues({
+        produkId: stock.produk_id,
+        cabangId: stock.cabang_id,
+        hpp: stock.hpp,
+        hargaJual: stock.harga_jual,
+        persentase: stock.margin,
+      });
+    } else {
+      // Bulk operations - no pre-fill
+      setSelectedStock(null);
+      setInitialModalValues({});
+    }
+    setModalMode(modalMode);
     setShowModalStockManager(true);
   };
 
@@ -628,33 +650,34 @@ Proses ini akan memperbaiki data stock secara otomatis.
 
         <div className="bg-white rounded-2xl shadow-xl border border-gray-100">
           <div className="p-6 border-b border-gray-100">
-            <div className="flex flex-col lg:flex-row gap-4 justify-between items-start lg:items-center">
-              <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input
-                  type="text"
-                  placeholder="Cari nama atau kode produk..."
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
-                    setPage(1);
-                  }}
-                />
-              </div>
+            {/* Search and Filters - Mobile Responsive */}
+            <div className="space-y-4 lg:space-y-0">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start lg:items-center">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <input
+                    type="text"
+                    placeholder="Cari nama atau kode produk..."
+                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    value={search}
+                    onChange={(e) => {
+                      setSearch(e.target.value);
+                      setPage(1);
+                    }}
+                  />
+                </div>
 
-              {/* Branch Filter (Table View) */}
-              <div className="flex items-center gap-3">
+                {/* Branch Filter (Table View Only) */}
                 {viewMode === 'table' && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-600">Gudang:</span>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-sm text-gray-600 whitespace-nowrap">Gudang:</span>
                     <select
                       value={selectedCabang}
                       onChange={(e) => {
                         setSelectedCabang(parseInt(e.target.value));
                         setPage(1);
                       }}
-                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm"
+                      className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm"
                     >
                       <option value={0}>Semua Cabang</option>
                       {cabangs.map((cabang) => (
@@ -665,100 +688,103 @@ Proses ini akan memperbaiki data stock secara otomatis.
                     </select>
                   </div>
                 )}
+              </div>
 
-                {/* View Toggle */}
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-600">Tampilan:</span>
-                <div className="flex bg-gray-100 rounded-lg p-1">
-                  <button
-                    onClick={() => setViewMode('table')}
-                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      viewMode === 'table'
-                        ? 'bg-white text-blue-600 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-800'
-                    }`}
-                  >
-                    <LayoutGrid className="w-4 h-4 inline mr-1" />
-                    Tabel
-                  </button>
-                  <button
-                    onClick={() => setViewMode('card')}
-                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                      viewMode === 'card'
-                        ? 'bg-white text-blue-600 shadow-sm'
-                        : 'text-gray-600 hover:text-gray-800'
-                    }`}
-                  >
-                    <List className="w-4 h-4 inline mr-1" />
-                    Kartu
-                  </button>
-                </div>
+              {/* View Toggle - Mobile Responsive */}
+              <div className="flex flex-col xs:flex-row gap-2 xs:gap-3 items-start xs:items-center xs:justify-end">
+                <div className="flex items-center gap-2 w-full xs:w-auto">
+                  <span className="text-sm text-gray-600 whitespace-nowrap">Tampilan:</span>
+                  <div className="flex bg-gray-100 rounded-lg p-1 w-full xs:w-auto min-w-0">
+                    <button
+                      onClick={() => setViewMode('table')}
+                      className={`flex-1 xs:flex-none px-2 xs:px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                        viewMode === 'table'
+                          ? 'bg-white text-blue-600 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-800'
+                      }`}
+                      title="Mode Tabel"
+                    >
+                      <LayoutGrid className="w-4 h-4 inline mr-1" />
+                      <span className="hidden xs:inline">Tabel</span>
+                    </button>
+                    <button
+                      onClick={() => setViewMode('card')}
+                      className={`flex-1 xs:flex-none px-2 xs:px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                        viewMode === 'card'
+                          ? 'bg-white text-blue-600 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-800'
+                      }`}
+                      title="Mode Kartu"
+                    >
+                      <List className="w-4 h-4 inline mr-1" />
+                      <span className="hidden xs:inline">Kartu</span>
+                    </button>
+                  </div>
               </div>
             </div>
 
-            {/* Mobile Responsive Button Layout - Only show for users with stock.manage */}
-            {canManage && (
-              <div className="flex gap-2 sm:gap-3 justify-end sm:justify-start">
-    <button
-      onClick={() => handleManageStock(null)}
-      className="sm:flex-none px-3 py-2.5 sm:px-4 sm:py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 active:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
-    >
-      <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
-      <span className="hidden sm:inline whitespace-nowrap">Tambah Stock</span>
-    </button>
+            {/* Action Buttons - Mobile Responsive */}
+            <div className="flex flex-wrap gap-2 sm:gap-3 justify-end sm:justify-start">
+              {/* Users with stock.manage permission */}
+              {canManage && (
+                <>
+                  <button
+                    onClick={() => handleManageStock(null)}
+                    className="sm:flex-none px-3 py-2.5 sm:px-4 sm:py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 active:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
+                  >
+                    <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <span className="hidden sm:inline whitespace-nowrap">Tambah Stock</span>
+                  </button>
 
-    <button
-      onClick={handleFixNegativeStock}
-      className={`sm:flex-none px-3 py-2.5 sm:px-4 sm:py-3 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium text-sm relative ${
-        negativeStockCount > 0
-          ? 'bg-orange-500 hover:bg-orange-600 active:bg-orange-700 animate-pulse'
-          : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
-      }`}
-      title="Fix stock discrepancies from pembelian & produksi"
-    >
-      <span className="text-lg">🔧</span>
-      {negativeStockCount > 0 && (
-        <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center sm:hidden">
-          {negativeStockCount}
-        </span>
-      )}
-      <span className="hidden sm:inline whitespace-nowrap">
-        Fix Stock {negativeStockCount > 0 ? `(${negativeStockCount})` : ''}
-      </span>
-    </button>
+                  <button
+                    onClick={handleFixNegativeStock}
+                    className={`sm:flex-none px-3 py-2.5 sm:px-4 sm:py-3 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium text-sm relative ${
+                      negativeStockCount > 0
+                        ? 'bg-orange-500 hover:bg-orange-600 active:bg-orange-700 animate-pulse'
+                        : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
+                    }`}
+                    title="Fix stock discrepancies from pembelian & produksi"
+                  >
+                    <span className="text-lg">🔧</span>
+                    {negativeStockCount > 0 && (
+                      <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center sm:hidden">
+                        {negativeStockCount}
+                      </span>
+                    )}
+                    <span className="hidden sm:inline whitespace-nowrap">
+                      Fix Stock {negativeStockCount > 0 ? `(${negativeStockCount})` : ''}
+                    </span>
+                  </button>
 
-    <button
-      onClick={handleResetRebuild}
-      className="sm:flex-none px-3 py-2.5 sm:px-4 sm:py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 active:bg-purple-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
-      title="Reset & rebuild all stock from scratch"
-    >
-      <span className="text-lg">🔄</span>
-      <span className="hidden sm:inline whitespace-nowrap">Reset & Rebuild</span>
-    </button>
+                  <button
+                    onClick={handleResetRebuild}
+                    className="sm:flex-none px-3 py-2.5 sm:px-4 sm:py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 active:bg-purple-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
+                    title="Reset & rebuild all stock from scratch"
+                  >
+                    <span className="text-lg">🔄</span>
+                    <span className="hidden sm:inline whitespace-nowrap">Reset & Rebuild</span>
+                  </button>
 
-    <button
-      onClick={handleExport}
-      className="sm:flex-none px-3 py-2.5 sm:px-4 sm:py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 active:bg-green-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
-    >
-      <Download className="w-4 h-4 sm:w-5 sm:h-5" />
-      <span className="hidden sm:inline whitespace-nowrap">Export</span>
-    </button>
-  </div>
-)}
+                  <button
+                    onClick={handleExport}
+                    className="sm:flex-none px-3 py-2.5 sm:px-4 sm:py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 active:bg-green-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
+                  >
+                    <Download className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <span className="hidden sm:inline whitespace-nowrap">Export</span>
+                  </button>
+                </>
+              )}
 
-{/* Kasir can export stock data */}
-{!canManage && (
-  <div className="flex gap-2 sm:gap-3 justify-end sm:justify-start">
-    <button
-      onClick={handleExport}
-      className="sm:flex-none px-3 py-2.5 sm:px-4 sm:py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 active:bg-green-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
-    >
-      <Download className="w-4 h-4 sm:w-5 sm:h-5" />
-      <span className="hidden sm:inline whitespace-nowrap">Export</span>
-    </button>
-  </div>
-)}
-
+              {/* Kasir can export stock data */}
+              {!canManage && (
+                <button
+                  onClick={handleExport}
+                  className="sm:flex-none px-3 py-2.5 sm:px-4 sm:py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 active:bg-green-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
+                >
+                  <Download className="w-4 h-4 sm:w-5 sm:h-5" />
+                  <span className="hidden sm:inline whitespace-nowrap">Export</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -1023,6 +1049,11 @@ Proses ini akan memperbaiki data stock secara otomatis.
         onClose={() => setShowModalStockManager(false)}
         onSuccess={handleModalSuccess}
         mode={modalMode}
+        initialProdukId={initialModalValues.produkId}
+        initialCabangId={initialModalValues.cabangId}
+        initialHpp={initialModalValues.hpp}
+        initialHargaJual={initialModalValues.hargaJual}
+        initialPersentase={initialModalValues.persentase}
       />
 
       <ModalHistory
@@ -1032,8 +1063,8 @@ Proses ini akan memperbaiki data stock secara otomatis.
         namaProduk={selectedStock?.nama_produk}
         cabangId={selectedStock?.cabang_id}
       />
-      
+
+      </div>
     </div>
   );
 }
-

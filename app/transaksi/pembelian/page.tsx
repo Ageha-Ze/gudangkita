@@ -263,93 +263,125 @@ export default function PembelianPage() {
       </div>
 
       {/* Mobile Cards View */}
-      <div className="block lg:hidden space-y-3">
+      <div className="block lg:hidden space-y-4">
         {loading ? (
-          <div className="bg-white rounded-xl shadow-lg p-8 text-center">
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-10 h-10 border-4 border-violet-500 border-t-transparent rounded-full animate-spin"></div>
-              <p className="text-gray-500 font-medium">Memuat data...</p>
-            </div>
+          <div className="flex flex-col items-center gap-3 py-8">
+            <div className="w-10 h-10 border-4 border-violet-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-gray-500 font-medium">Memuat data...</p>
           </div>
         ) : pembelians.length === 0 ? (
-          <div className="bg-white rounded-xl shadow-lg p-8 text-center">
-            <p className="text-gray-500">No data available</p>
+          <div className="text-center py-8 text-gray-500">
+            Tidak ada data pembelian
           </div>
         ) : (
           pembelians.map((item) => (
-            <div key={item.id} className="bg-white rounded-xl shadow-lg p-4 border-l-4 border-violet-500">
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex-1">
-                  <div className="font-semibold text-violet-700">{item.nota_supplier}</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {new Date(item.tanggal).toLocaleDateString('id-ID')}
+            <div key={item.id} className="bg-gradient-to-br from-violet-400 via-purple-500 to-indigo-600 rounded-2xl shadow-xl p-5 text-white relative overflow-hidden">
+              {/* Background Pattern */}
+              <div className="absolute inset-0 opacity-10">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white rounded-full -translate-y-16 translate-x-16"></div>
+                <div className="absolute bottom-0 left-0 w-24 h-24 bg-white rounded-full translate-y-12 -translate-x-12"></div>
+              </div>
+
+              {/* Content */}
+              <div className="relative z-10">
+                {/* Header */}
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <p className="text-xs text-violet-100 mb-1">📋 Nota Supplier</p>
+                    <p className="font-mono text-base font-bold">{item.nota_supplier}</p>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                      item.status_barang === 'Diterima' ? 'bg-green-400 text-green-900' :
+                      item.status_barang === 'Belum Diterima' ? 'bg-yellow-400 text-yellow-900' :
+                      'bg-blue-400 text-blue-900'
+                    }`}>
+                      {item.status_barang}
+                    </span>
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                      item.status_pembayaran === 'Lunas' ? 'bg-green-400 text-green-900' :
+                      item.status_pembayaran === 'Cicil' ? 'bg-blue-400 text-blue-900' :
+                      'bg-red-400 text-red-900'
+                    }`}>
+                      {item.status_pembayaran}
+                    </span>
                   </div>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium text-center ${
-                    item.status_barang === 'Diterima' ? 'bg-green-100 text-green-800' :
-                    item.status_barang === 'Belum Diterima' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-blue-100 text-blue-800'
-                  }`}>
-                    {item.status_barang}
-                  </span>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium text-center ${
-                    item.status_pembayaran === 'Lunas' ? 'bg-green-100 text-green-800' :
-                    item.status_pembayaran === 'Cicil' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-red-100 text-red-800'
-                  }`}>
-                    {item.status_pembayaran}
-                  </span>
-                </div>
-              </div>
 
-              <div className="space-y-2 text-sm mb-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Supplier:</span>
-                  <span className="font-medium">{item.suplier?.nama || '-'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Kantor:</span>
-                  <span className="font-medium">{item.cabang?.nama_cabang || '-'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Total Harga:</span>
-                  <span className="font-semibold text-violet-700">
-                    Rp. {calculateTotalHargaProduk(item).toLocaleString('id-ID')}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Sisa Tagihan:</span>
-                  <span className="font-semibold text-red-600">
-                    Rp. {item.tagihan.toLocaleString('id-ID')}
-                  </span>
-                </div>
-              </div>
+                {/* Pembelian Info */}
+                <div className="space-y-2.5 mb-4">
+                  <div className="flex items-start gap-2">
+                    <span className="text-lg">📅</span>
+                    <div className="flex-1">
+                      <p className="text-xs text-violet-100">Tanggal</p>
+                      <p className="text-sm font-semibold">{new Date(item.tanggal).toLocaleDateString('id-ID')}</p>
+                    </div>
+                  </div>
 
-              <div className="flex gap-2 pt-3 border-t border-gray-200">
-                <button
-                  onClick={() => router.push(`/transaksi/pembelian/${item.id}`)}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-green-600 bg-green-50 hover:bg-green-100 rounded-lg transition text-sm"
-                >
-                  <Eye size={16} />
-                  Detail
-                </button>
-                {canEdit && (
+                  <div className="flex items-start gap-2">
+                    <span className="text-lg">🏢</span>
+                    <div className="flex-1">
+                      <p className="text-xs text-violet-100">Supplier</p>
+                      <p className="text-sm font-semibold">{item.suplier?.nama || '-'}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">📦</span>
+                      <div>
+                        <p className="text-xs text-violet-100">Kantor</p>
+                        <p className="text-sm font-semibold">{item.cabang?.nama_cabang || '-'}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Divider */}
+                <div className="h-px bg-white/20 my-4"></div>
+
+                {/* Totals */}
+                <div className="space-y-2 mb-4">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-violet-100">Total Harga Produk</span>
+                    <span className="text-xl font-bold">Rp. {calculateTotalHargaProduk(item).toLocaleString('id-ID')}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-violet-100">Sisa Tagihan</span>
+                    <span className={`text-base font-bold ${
+                      item.tagihan > 0 ? 'text-red-300' : 'text-green-300'
+                    }`}>
+                      Rp. {item.tagihan.toLocaleString('id-ID')}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-2">
                   <button
-                    onClick={() => handlePrint(item.id)}
-                    className="flex items-center justify-center gap-2 px-3 py-2 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition text-sm"
+                    onClick={() => router.push(`/transaksi/pembelian/${item.id}`)}
+                    className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white px-3 py-2.5 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 border border-white/30"
                   >
-                    <Printer size={16} />
+                    <Eye size={16} />
+                    Detail
                   </button>
-                )}
-                {canDelete && (
-                  <button
-                    onClick={() => handleDelete(item.id)}
-                    className="flex items-center justify-center gap-2 px-3 py-2 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition text-sm"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                )}
+                  {canEdit && (
+                    <button
+                      onClick={() => handlePrint(item.id)}
+                      className="bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white px-3 py-2.5 rounded-xl text-sm font-semibold transition border border-white/30"
+                    >
+                      <Printer size={16} />
+                    </button>
+                  )}
+                  {canDelete && (
+                    <button
+                      onClick={() => handleDelete(item.id)}
+                      className="bg-red-500/80 hover:bg-red-600 text-white px-3 py-2.5 rounded-xl text-sm font-semibold transition border border-red-400"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))
@@ -518,4 +550,3 @@ export default function PembelianPage() {
     </div>
   );
 }
-

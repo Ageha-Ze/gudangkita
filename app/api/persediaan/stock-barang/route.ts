@@ -26,53 +26,114 @@ export async function GET(request: NextRequest) {
     console.log('📊 Fetching stock with params:', { page, limit, search, cabang_id, mode });
 
     // ========================================
-    // ✅ MODE: AGGREGATED (For Dropdown/Selection)
+    // ✅ MODE: AGGREGATED (For Dropdown/Selection - BRANCH SPECIFIC)
     // ========================================
     if (mode === 'aggregated') {
-      let query = supabase
-        .from('produk')
-        .select('id, nama_produk, kode_produk, satuan, stok, hpp, harga')
-        .gt('stok', 0); // Only products with stock > 0
+      console.log('🔍 Aggregated mode with cabang_id:', cabang_id);
 
-      // Search filter
-      if (search) {
-        query = query.or(`nama_produk.ilike.%${search}%,kode_produk.ilike.%${search}%`);
+      // Step 1: Only get products that exist in this branch
+      const { data: stockData, error: stockError } = await supabase
+        .from('stock_barang')
+        .select('produk_id')
+        .eq('cabang_id', cabang_id)
+        .gt('jumlah', 0);
+
+      if (stockError) {
+        console.error('Error fetching stock data for cabang:', stockError);
+        throw stockError;
       }
 
-      const { data: products, error } = await query
-        .order('nama_produk')
-        .limit(limit);
+      // If no products in this branch
+      if (!stockData || stockData.length === 0) {
+        return NextResponse.json({
+          success: true,
+          data: [],
+          count: 0,
+        });
+      }
 
-      if (error) throw error;
+      // Extract unique produk IDs for this branch
+      const produkIds = [...new Set(stockData.map(item => item.produk_id))];
+      console.log('Found produk IDs in cabang:', produkIds);
 
-      // Format data for dropdown
-      const formattedData = products?.map(p => {
-        const stock = parseFloat(p.stok?.toString() || '0');
-        const hpp = parseFloat(p.hpp?.toString() || '0');
-        const harga_jual = parseFloat(p.harga?.toString() || '0');
-        const margin = hpp > 0 ? ((harga_jual - hpp) / hpp) * 100 : 0;
-        
-        return {
-          produk_id: p.id,
-          nama_produk: p.nama_produk,
-          kode_produk: p.kode_produk,
-          satuan: p.satuan || 'Kg',
-          gudang: 'All',
-          total_stock: stock,
-          hpp: hpp,
-          harga_jual: harga_jual,
-          persentase: margin,
-          stock_masuk: 0,
-          stock_keluar: 0,
-        };
-      }) || [];
+      // Step 2: Calculate actual available stock for each product in this branch
+      const bahan = [];
+      for (const produkId of produkIds) {
+        // Calculate current stock by summing all stock_barang transactions for this product in this cabang
+        const { data: stockTransactions, error: stockError } = await supabase
+          .from('stock_barang')
+          .select('jumlah, tipe')
+          .eq('produk_id', produkId)
+          .eq('cabang_id', cabang_id);
 
-      console.log(`✅ Returned ${formattedData.length} products (aggregated mode)`);
+        if (stockError) {
+          console.error('Error getting stock transactions for produk:', produkId, stockError);
+          continue;
+        }
+
+        // Calculate current stock: masuk + , keluar -
+        let currentStock = 0;
+        stockTransactions?.forEach((transaction: any) => {
+          const amount = parseFloat(transaction.jumlah?.toString() || '0');
+          if (transaction.tipe === 'masuk') {
+            currentStock += amount;
+          } else if (transaction.tipe === 'keluar') {
+            currentStock -= amount;
+          }
+        });
+
+        // Only include products with positive stock in this branch
+        if (currentStock > 0) {
+          // Get product details from master produk table
+          const { data: produkData, error: produkError } = await supabase
+            .from('produk')
+            .select('id, nama_produk, kode_produk, satuan, hpp, harga')
+            .eq('id', produkId)
+            .single();
+
+          if (produkError || !produkData) {
+            console.warn('Produk not found in master table:', produkId);
+            continue;
+          }
+
+          const harga_jual = parseFloat(produkData.harga?.toString() || '0');
+          const hpp_val = parseFloat(produkData.hpp?.toString() || '0');
+
+          bahan.push({
+            produk_id: produkData.id,
+            nama_produk: produkData.nama_produk,
+            kode_produk: produkData.kode_produk,
+            satuan: produkData.satuan || 'Kg',
+            gudang: 'Cabang',
+            total_stock: Math.max(0, currentStock), // ✅ REAL CABANG STOCK, not master stock
+            hpp: hpp_val,
+            harga_jual: harga_jual,
+            persentase: hpp_val > 0 ? ((harga_jual - hpp_val) / hpp_val) * 100 : 0,
+            stock_masuk: 0,
+            stock_keluar: 0,
+          });
+        }
+      }
+
+      // Apply search filter if provided
+      let filteredData = bahan;
+      if (search) {
+        const searchLower = search.toLowerCase();
+        filteredData = bahan.filter(item =>
+          item.nama_produk.toLowerCase().includes(searchLower) ||
+          (item.kode_produk && item.kode_produk.toLowerCase().includes(searchLower))
+        );
+      }
+
+      // Apply limit
+      const limitedData = filteredData.slice(0, limit);
+
+      console.log(`✅ Returned ${limitedData.length} real-stock products in branch ${cabang_id} (aggregated mode)`);
 
       return NextResponse.json({
         success: true,
-        data: formattedData,
-        count: formattedData.length,
+        data: limitedData,
+        count: limitedData.length,
       });
     }
 

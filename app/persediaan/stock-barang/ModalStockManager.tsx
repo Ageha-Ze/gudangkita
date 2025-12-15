@@ -8,6 +8,11 @@ interface ModalStockManagerProps {
   onClose: () => void;
   onSuccess: () => void;
   mode?: 'add' | 'remove' | 'adjust' | 'price';
+  initialProdukId?: number;
+  initialCabangId?: number;
+  initialHpp?: number;
+  initialHargaJual?: number;
+  initialPersentase?: number;
 }
 
 interface Produk {
@@ -38,7 +43,12 @@ export default function ModalStockManager({
   isOpen,
   onClose,
   onSuccess,
-  mode = 'add'
+  mode = 'add',
+  initialProdukId,
+  initialCabangId,
+  initialHpp,
+  initialHargaJual,
+  initialPersentase
 }: ModalStockManagerProps) {
   const [currentMode, setCurrentMode] = useState<'add' | 'remove' | 'adjust' | 'price'>(mode);
   const [loading, setLoading] = useState(false);
@@ -57,14 +67,34 @@ export default function ModalStockManager({
     keterangan: '',
   });
 
-  // Fetch master data
+  // Fetch master data and initialize form with initial values
   useEffect(() => {
     if (isOpen) {
       fetchProduks();
       fetchCabangs();
       setCurrentMode(mode);
+
+      // Initialize form with provided initial values
+      if (initialProdukId || initialCabangId) {
+        setFormData(prev => ({
+          ...prev,
+          produk_id: initialProdukId || 0,
+          cabang_id: initialCabangId || 0,
+          hpp: initialHpp || 0,
+          harga_jual: initialHargaJual || 0,
+          persentase: initialPersentase || 0,
+          jumlah: 0,
+          keterangan: '',
+        }));
+
+        // Find selected product
+        if (initialProdukId) {
+          const produk = produks.find(p => p.id === initialProdukId);
+          setSelectedProduk(produk || null);
+        }
+      }
     }
-  }, [isOpen, mode]);
+  }, [isOpen, mode, initialProdukId, initialCabangId, initialHpp, initialHargaJual, initialPersentase, produks]);
 
   useEffect(() => {
     // Reset form when produk changes

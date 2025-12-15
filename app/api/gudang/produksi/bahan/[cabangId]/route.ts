@@ -33,30 +33,59 @@ export async function GET(
     const produkIds = [...new Set(stockData.map(item => item.produk_id))];
     console.log('Found produk IDs in cabang:', produkIds);
 
-    // Step 2: Ambil produk detail dari master produk yang memiliki stock > 0
-    const { data, error } = await supabase
-      .from('produk')
-      .select('id, nama_produk, kode_produk, satuan, stok, hpp')
-      .in('id', produkIds) // Hanya produk yang ada di cabang ini
-      .gt('stok', 0) // Hanya yang masih ada stock
-      .not('nama_produk', 'is', null)
-      .order('nama_produk');
+    // Step 2: Calculate actual available stock for each product in this cabang
+    console.log('Calculating current stock for each product in cabang:', cabangId);
 
-    if (error) {
-      console.error('Supabase error:', error);
-      throw error;
+    const bahan = [];
+    for (const produkId of produkIds) {
+      // Calculate current stock by summing all stock_barang transactions for this product in this cabang
+      const { data: stockTransactions, error: stockError } = await supabase
+        .from('stock_barang')
+        .select('jumlah, tipe')
+        .eq('produk_id', produkId)
+        .eq('cabang_id', parseInt(cabangId));
+
+      if (stockError) {
+        console.error('Error getting stock transactions for produk:', produkId, stockError);
+        continue;
+      }
+
+      // Calculate current stock: masuk + , keluar -
+      let currentStock = 0;
+      stockTransactions?.forEach((transaction: any) => {
+        const amount = parseFloat(transaction.jumlah?.toString() || '0');
+        if (transaction.tipe === 'masuk') {
+          currentStock += amount;
+        } else if (transaction.tipe === 'keluar') {
+          currentStock -= amount;
+        }
+      });
+
+      console.log(`Produk ${produkId} current stock in cabang ${cabangId}:`, currentStock);
+
+      // Only include products with positive stock
+      if (currentStock > 0) {
+        // Get product details from master produk table
+        const { data: produkData, error: produkError } = await supabase
+          .from('produk')
+          .select('id, nama_produk, kode_produk, satuan, hpp')
+          .eq('id', produkId)
+          .single();
+
+        if (produkError || !produkData) {
+          console.warn('Produk not found in master table:', produkId);
+          continue;
+        }
+
+        bahan.push({
+          produk_id: produkData.id,
+          nama_produk: produkData.nama_produk,
+          stok: currentStock, // ✅ REAL CABANG STOCK, not master stock
+          satuan: produkData.satuan || 'pcs',
+          hpp: produkData.hpp || 0
+        });
+      }
     }
-
-    console.log('Raw produk table result:', data);
-
-    // Transform ke format yang diperlukan modal
-    const bahan = data?.map((produk: any) => ({
-      produk_id: produk.id,
-      nama_produk: produk.nama_produk,
-      stok: produk.stok, // Gunakan stock dari master produk table
-      satuan: produk.satuan || 'pcs',
-      hpp: produk.hpp || 0
-    })) || [];
 
     console.log('Transformed bahan data to match modal format:', bahan);
 

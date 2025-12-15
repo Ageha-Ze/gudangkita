@@ -405,7 +405,8 @@ export default function DetailPembelianPage({
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Desktop Table */}
+          <div className="hidden lg:block overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="bg-gradient-to-r from-gray-50 to-gray-100">
@@ -464,6 +465,103 @@ export default function DetailPembelianPage({
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile Cards for Detail Barang */}
+          <div className="lg:hidden space-y-4 p-4">
+            {loading ? (
+              <div className="flex flex-col items-center gap-3 py-8">
+                <div className="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-gray-500 font-medium">Memuat data...</p>
+              </div>
+            ) : pembelian.detail_pembelian && pembelian.detail_pembelian.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <Package className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                <p>Belum ada barang</p>
+              </div>
+            ) : (
+              pembelian.detail_pembelian?.map((detail, index) => (
+                <div key={detail.id} className="bg-gradient-to-br from-violet-400 via-purple-500 to-indigo-600 rounded-2xl shadow-xl p-5 text-white relative overflow-hidden">
+                  {/* Background Pattern */}
+                  <div className="absolute inset-0 opacity-10">
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-white rounded-full -translate-y-16 translate-x-16"></div>
+                    <div className="absolute bottom-0 left-0 w-24 h-24 bg-white rounded-full translate-y-12 -translate-x-12"></div>
+                  </div>
+
+                  {/* Content */}
+                  <div className="relative z-10">
+                    {/* Header */}
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <p className="text-xs text-violet-100 mb-1">📋 Kode</p>
+                        <p className="font-mono text-base font-bold">{detail.produk?.kode_produk || '-'}</p>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-400 text-green-900">
+                          Qty: {parseFloat(detail.jumlah.toString()).toFixed(2)}
+                        </span>
+                        {detail.jumlah_box > 0 && (
+                          <span className="px-3 py-1 rounded-full text-xs font-bold bg-blue-400 text-blue-900">
+                            Box: {detail.jumlah_box}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Product Info */}
+                    <div className="space-y-2.5 mb-4">
+                      <div className="flex items-start gap-2">
+                        <span className="text-lg">📦</span>
+                        <div className="flex-1">
+                          <p className="text-xs text-violet-100">Nama Produk</p>
+                          <p className="text-sm font-semibold">{detail.produk?.nama_produk || '-'}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">💰</span>
+                        <div>
+                          <p className="text-xs text-violet-100">Harga</p>
+                          <p className="text-sm font-semibold">Rp. {detail.harga.toLocaleString('id-ID')}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Divider */}
+                    <div className="h-px bg-white/20 my-4"></div>
+
+                    {/* Subtotal */}
+                    <div className="flex justify-between items-center mb-4">
+                      <span className="text-sm text-violet-100">Subtotal</span>
+                      <span className="text-xl font-bold">Rp. {detail.subtotal.toLocaleString('id-ID')}</span>
+                    </div>
+
+                    {/* Action Buttons */}
+                    {(isPending || isBilled) && (
+                      <div className="flex gap-2">
+                        {permissions.canManage && (
+                          <button
+                            onClick={() => handleEditBarang(detail)}
+                            className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white px-3 py-2.5 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 border border-white/30"
+                          >
+                            <Edit size={16} />
+                            Edit
+                          </button>
+                        )}
+                        {isPending && permissions.canManage && (
+                          <button
+                            onClick={() => handleDeleteItem(detail.id)}
+                            className="bg-red-500/80 hover:bg-red-600 text-white px-3 py-2.5 rounded-xl text-sm font-semibold transition border border-red-400"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
 
           {/* Summary */}
@@ -596,8 +694,8 @@ export default function DetailPembelianPage({
           </div>
         </div>
 
-        {/* Table History */}
-        <div className="overflow-x-auto -mx-4 md:mx-0">
+        {/* Desktop Table */}
+        <div className="hidden lg:block overflow-x-auto -mx-4 md:mx-0">
           <div className="inline-block min-w-full align-middle">
             <table className="min-w-full border-collapse border border-gray-200">
               <thead className="bg-blue-100">
@@ -685,6 +783,94 @@ export default function DetailPembelianPage({
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* Mobile Cards for History Cicilan */}
+        <div className="lg:hidden space-y-4">
+          {historyCicilan.map((item, index) => (
+            <div key={item.id} className="bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-600 rounded-2xl shadow-xl p-5 text-white relative overflow-hidden">
+              {/* Background Pattern */}
+              <div className="absolute inset-0 opacity-10">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-white rounded-full -translate-y-16 translate-x-16"></div>
+                <div className="absolute bottom-0 left-0 w-24 h-24 bg-white rounded-full translate-y-12 -translate-x-12"></div>
+              </div>
+
+              {/* Content */}
+              <div className="relative z-10">
+                {/* Header with Cicilan # */}
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <p className="text-xs text-cyan-100 mb-1">Cicilan #{index + 1}</p>
+                    <p className="font-mono text-base font-bold">{new Date(item.tanggal_cicilan).toLocaleDateString('id-ID')}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                      item.type === 'pelunasan' ? 'bg-green-400 text-green-900' :
+                      item.type === 'cicilan' ? 'bg-blue-400 text-blue-900' :
+                      item.type === 'uang_muka' ? 'bg-purple-400 text-purple-900' :
+                      'bg-gray-400 text-gray-900'
+                    }`}>
+                      {item.type === 'pelunasan' ? 'Pelunasan' :
+                       item.type === 'cicilan' ? 'Cicilan' :
+                       item.type === 'uang_muka' ? 'Uang Muka' :
+                       item.type}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Cicilan Info */}
+                <div className="space-y-2.5 mb-4">
+                  <div className="flex items-start gap-2">
+                    <span className="text-lg">🏦</span>
+                    <div className="flex-1">
+                      <p className="text-xs text-cyan-100">Rekening</p>
+                      <p className="text-sm font-semibold">{item.rekening || '-'}</p>
+                    </div>
+                  </div>
+
+                  {item.keterangan && (
+                    <div className="flex items-start gap-2">
+                      <span className="text-lg">📝</span>
+                      <div className="flex-1">
+                        <p className="text-xs text-cyan-100">Keterangan</p>
+                        <p className="text-sm font-semibold">{item.keterangan}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Divider */}
+                <div className="h-px bg-white/20 my-4"></div>
+
+                {/* Amount */}
+                <div className="flex justify-between items-center mb-4">
+                  <span className="text-sm text-cyan-100">Jumlah Cicilan</span>
+                  <span className="text-2xl font-bold">
+                    Rp. {parseFloat(item.jumlah_cicilan.toString()).toLocaleString('id-ID')}
+                  </span>
+                </div>
+
+                {/* Action Buttons */}
+                {!isLunas && item.type !== 'pelunasan' && permissions.canManage && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleEditCicilan(item)}
+                      className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white px-3 py-2.5 rounded-xl text-sm font-semibold transition flex items-center justify-center gap-2 border border-white/30"
+                    >
+                      <Edit size={16} />
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleDeleteCicilan(item.id)}
+                      className="bg-red-500/80 hover:bg-red-600 text-white px-3 py-2.5 rounded-xl text-sm font-semibold transition border border-red-400"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     )}
