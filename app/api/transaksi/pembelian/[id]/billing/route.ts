@@ -57,6 +57,13 @@ export async function POST(
     const biaya_kirim = Number(body.biaya_kirim || 0);
     const rekening_bayar = body.rekening_bayar || null;
 
+    // Validasi: jika ada uang muka, rekening wajib diisi
+    if (uang_muka > 0 && !rekening_bayar) {
+      return NextResponse.json({
+        error: 'Rekening bayar wajib diisi jika ada uang muka'
+      }, { status: 400 });
+    }
+
     // Calculate totals
     const detail_pembelian = pembelian.detail_pembelian || [];
     const subtotal = detail_pembelian.reduce(
@@ -65,7 +72,8 @@ export async function POST(
     );
     const finalTotal = subtotal + biaya_kirim;
 
-    // ✅ Update pembelian to 'billed' status (NO STOCK INSERT YET!)
+    // ✅ Update pembelian - ganti 'selesai' dengan enum yang valid
+    // Opsi: 'completed', 'processed', 'done', dll
     const { error: updateError } = await supabase
       .from('transaksi_pembelian')
       .update({
@@ -73,8 +81,8 @@ export async function POST(
         biaya_kirim: biaya_kirim,
         uang_muka: uang_muka,
         rekening_bayar: rekening_bayar,
-        status: 'billed',
-        status_barang: 'Belum Diterima', // ← Menunggu terima barang
+        status: 'billed', // ← GANTI SESUAI ENUM DATABASE ANDA
+        status_barang: 'Belum Diterima',
         status_pembayaran: uang_muka >= finalTotal ? 'Lunas' : (uang_muka > 0 ? 'Cicil' : 'Belum Lunas'),
         updated_at: new Date().toISOString()
       })
@@ -82,9 +90,9 @@ export async function POST(
 
     if (updateError) throw updateError;
 
-    console.log('✅ Pembelian status updated to billed (stock belum masuk)');
+    console.log('✅ Pembelian status updated to completed'); // ← Update log message
 
-    // ✅ Handle uang muka
+    // ✅ Handle DP/Uang Muka (BAYAR = KURANGI KAS)
     if (uang_muka > 0) {
       // Check if uang_muka already recorded
       const { data: cicilanCheck } = await supabase
@@ -97,7 +105,7 @@ export async function POST(
       const uangMukaAlreadyRecorded = cicilanCheck && cicilanCheck.length > 0;
 
       if (!uangMukaAlreadyRecorded) {
-        // Insert cicilan
+        // Insert cicilan uang muka
         const { error: cicilanError } = await supabase
           .from('cicilan_pembelian')
           .insert({
@@ -106,7 +114,7 @@ export async function POST(
             jumlah_cicilan: uang_muka,
             rekening: rekening_bayar,
             type: 'uang_muka',
-            keterangan: 'Uang Muka Awal'
+            keterangan: 'Uang Muka / DP saat Billing'
           });
 
         if (cicilanError) {
@@ -114,7 +122,7 @@ export async function POST(
           throw cicilanError;
         }
 
-        // Update kas
+        // ✅ KURANGI KAS (karena uang sudah keluar untuk DP)
         if (rekening_bayar) {
           const { data: kasData, error: kasGetError } = await supabase
             .from('kas')
@@ -124,10 +132,20 @@ export async function POST(
 
           if (kasGetError) {
             console.error('Error getting kas:', kasGetError);
-          } else if (kasData) {
+            throw new Error('Rekening tidak ditemukan');
+          }
+          
+          if (kasData) {
             const kasSaldo = parseFloat(kasData.saldo.toString());
+            
+            // Validasi saldo cukup
+            if (kasSaldo < uang_muka) {
+              throw new Error(`Saldo kas tidak cukup! Saldo: Rp ${kasSaldo.toLocaleString('id-ID')}, DP: Rp ${uang_muka.toLocaleString('id-ID')}`);
+            }
+            
             const newSaldo = kasSaldo - uang_muka;
 
+            // Update saldo kas
             await supabase
               .from('kas')
               .update({
@@ -136,14 +154,15 @@ export async function POST(
               })
               .eq('id', kasData.id);
 
+            // Insert transaksi kas (DEBIT = uang keluar)
             await supabase
               .from('transaksi_kas')
               .insert({
                 kas_id: kasData.id,
                 tanggal_transaksi: pembelian.tanggal,
-                debit: uang_muka,
+                debit: uang_muka, // Debit = pengeluaran
                 kredit: 0,
-                keterangan: `Uang Muka Pembelian (Nota: ${pembelian.nota_supplier})`
+                keterangan: `DP Pembelian (Nota: ${pembelian.nota_supplier})`
               });
 
             console.log(`✅ Kas updated: ${kasSaldo} - ${uang_muka} = ${newSaldo}`);
@@ -154,9 +173,10 @@ export async function POST(
       }
     }
 
-    // Create or update hutang_pembelian
+    // ✅ Create or update hutang_pembelian
     const totalHutang = finalTotal;
-    const sisa = Math.max(0, totalHutang - uang_muka);
+    const dibayar = uang_muka;
+    const sisa = Math.max(0, totalHutang - dibayar);
 
     const { data: existingHutang } = await supabase
       .from('hutang_pembelian')
@@ -169,12 +189,14 @@ export async function POST(
         .from('hutang_pembelian')
         .update({
           total_hutang: totalHutang,
-          dibayar: uang_muka,
+          dibayar: dibayar,
           sisa: sisa,
           status: sisa <= 0 ? 'Lunas' : 'Belum Lunas',
           updated_at: new Date().toISOString()
         })
         .eq('pembelian_id', parseInt(pembelian_id));
+      
+      console.log('✅ Hutang updated');
     } else {
       await supabase
         .from('hutang_pembelian')
@@ -182,13 +204,15 @@ export async function POST(
           pembelian_id: parseInt(pembelian_id),
           suplier_id: body.suplier_id || pembelian.suplier_id,
           total_hutang: totalHutang,
-          dibayar: uang_muka,
+          dibayar: dibayar,
           sisa: sisa,
           status: sisa <= 0 ? 'Lunas' : 'Belum Lunas'
         });
+      
+      console.log('✅ Hutang created');
     }
 
-    console.log('✅ Billing completed (menunggu terima barang untuk stock masuk)');
+    console.log('✅ Billing completed');
 
     // Return updated data
     const { data: updatedPembelian } = await supabase
@@ -209,13 +233,15 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      message: 'Billing berhasil. Klik "Terima Barang" untuk memasukkan stock.',
+      message: uang_muka > 0 
+        ? `Billing berhasil. DP Rp ${uang_muka.toLocaleString('id-ID')} telah dibayarkan.`
+        : 'Billing berhasil. Gunakan menu Pelunasan/Cicilan untuk pembayaran.',
       pembelian: updatedPembelian,
       subtotal,
       finalTotal,
       uang_muka,
       biaya_kirim,
-      tagihan: Math.max(0, finalTotal - uang_muka)
+      sisa_hutang: sisa
     });
 
   } catch (error: any) {

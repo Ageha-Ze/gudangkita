@@ -4,6 +4,13 @@ import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { calculatePembelianTotals } from '@/lib/transaksi/calculatePembelianTotals';
 
+interface Kas {
+  id: number;
+  nama_kas: string;
+  no_rekening?: string;
+  saldo: number;
+}
+
 interface PembelianData {
   id: number;
   tanggal: string;
@@ -12,6 +19,7 @@ interface PembelianData {
   total: number;
   uang_muka: number;
   biaya_kirim: number;
+  cabang_id?: number;
   detail_pembelian?: {
     jumlah: number;
     harga: number;
@@ -31,28 +39,59 @@ interface Props {
 
 export default function ModalBilling({ isOpen, onClose, onSuccess, pembelianData }: Props) {
   const [loading, setLoading] = useState(false);
+  const [rekenings, setRekenings] = useState<Kas[]>([]);
+  const [selectedKas, setSelectedKas] = useState<Kas | null>(null);
+  
   const [formData, setFormData] = useState({
     uang_muka: '',
     biaya_kirim: '',
+    rekening_bayar: '',
   });
 
   const [calculatedData, setCalculatedData] = useState({
     total_harga_produk: 0,
     terbayar: 0,
-    tagihan: 0,
+    sisa_hutang: 0,
   });
 
-  // Initialize form data
+  // Fetch rekening saat modal dibuka
   useEffect(() => {
-    if (pembelianData) {
+    if (isOpen && pembelianData) {
+      fetchRekenings();
       setFormData({
         uang_muka: String(pembelianData.uang_muka || 0),
         biaya_kirim: String(pembelianData.biaya_kirim || 0),
+        rekening_bayar: '',
       });
+      setSelectedKas(null);
     }
-  }, [pembelianData]);
+  }, [isOpen, pembelianData]);
 
-  // Hitung tagihan
+  const fetchRekenings = async () => {
+    try {
+      const url = pembelianData?.cabang_id 
+        ? `/api/master/kas?cabang_id=${pembelianData.cabang_id}`
+        : '/api/master/kas';
+      
+      const res = await fetch(url);
+      const json = await res.json();
+      
+      if (json.data && json.data.length > 0) {
+        const parsedData = json.data.map((rek: any) => ({
+          ...rek,
+          saldo: parseFloat(rek.saldo) || 0
+        }));
+        setRekenings(parsedData);
+      } else {
+        setRekenings([]);
+      }
+    } catch (error) {
+      console.error('Error fetching rekenings:', error);
+      setRekenings([]);
+    }
+  };
+
+  // Hitung total
   useEffect(() => {
     if (!pembelianData) return;
 
@@ -62,31 +101,53 @@ export default function ModalBilling({ isOpen, onClose, onSuccess, pembelianData
       uang_muka: parseInt(formData.uang_muka) || 0,
     } as any;
 
-    const { subtotal, finalTotal, tagihan } = calculatePembelianTotals(preview);
+    const { subtotal, finalTotal } = calculatePembelianTotals(preview);
+    const uangMuka = Number(preview.uang_muka || 0);
 
     setCalculatedData({
       total_harga_produk: subtotal,
-      terbayar: Number(preview.uang_muka || 0),
-      tagihan,
+      terbayar: uangMuka,
+      sisa_hutang: Math.max(0, finalTotal - uangMuka),
     });
   }, [pembelianData, formData.uang_muka, formData.biaya_kirim]);
 
   const handleChangeNumber = (field: 'uang_muka' | 'biaya_kirim', value: string) => {
-    // Hanya terima digit
     const filtered = value.replace(/\D/g, '');
     setFormData((prev) => ({ ...prev, [field]: filtered }));
+  };
+
+  const handleRekeningChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const namaKas = e.target.value;
+    const kas = rekenings.find(k => k.nama_kas === namaKas);
+    setSelectedKas(kas || null);
+    setFormData((prev) => ({ ...prev, rekening_bayar: namaKas }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pembelianData) return;
 
+    const uangMuka = parseInt(formData.uang_muka) || 0;
+
+    // Validasi: jika ada uang muka, rekening wajib dipilih
+    if (uangMuka > 0 && !formData.rekening_bayar) {
+      alert('Pilih rekening pembayaran untuk DP');
+      return;
+    }
+
+    // Validasi saldo kas
+    if (uangMuka > 0 && selectedKas && uangMuka > selectedKas.saldo) {
+      alert(`Saldo kas tidak cukup! Saldo tersedia: Rp ${selectedKas.saldo.toLocaleString('id-ID')}`);
+      return;
+    }
+
     setLoading(true);
 
     try {
       const payload = {
-        uang_muka: parseInt(formData.uang_muka) || 0,
+        uang_muka: uangMuka,
         biaya_kirim: parseInt(formData.biaya_kirim) || 0,
+        rekening_bayar: formData.rekening_bayar || null,
         suplier_id: pembelianData.suplier?.id,
       };
 
@@ -99,7 +160,7 @@ export default function ModalBilling({ isOpen, onClose, onSuccess, pembelianData
       const json = await res.json();
 
       if (res.ok) {
-        alert('Billing berhasil');
+        alert(json.message || 'Billing berhasil');
         onSuccess(json?.pembelian);
         onClose();
       } else {
@@ -115,6 +176,8 @@ export default function ModalBilling({ isOpen, onClose, onSuccess, pembelianData
 
   if (!isOpen || !pembelianData) return null;
 
+  const hasDP = parseInt(formData.uang_muka) > 0;
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg w-full max-w-xl max-h-[90vh] overflow-y-auto">
@@ -124,6 +187,13 @@ export default function ModalBilling({ isOpen, onClose, onSuccess, pembelianData
           <button onClick={onClose} className="text-gray-600 hover:text-gray-800">
             <X size={24} />
           </button>
+        </div>
+
+        {/* Info */}
+        <div className="p-4 bg-blue-50 border-b">
+          <p className="text-sm text-blue-800">
+            <strong>💡 Info:</strong> Anda bisa bayar DP sekarang atau kosongkan jika bayar nanti via menu Pelunasan/Cicilan.
+          </p>
         </div>
 
         {/* Form */}
@@ -161,20 +231,6 @@ export default function ModalBilling({ isOpen, onClose, onSuccess, pembelianData
             />
           </div>
 
-          {/* Uang Muka */}
-          <div className="grid grid-cols-3 items-center gap-4">
-            <label className="font-medium">Uang Muka</label>
-            <div className="col-span-2">
-              <input
-                type="text"
-                value={formData.uang_muka}
-                onChange={(e) => handleChangeNumber('uang_muka', e.target.value)}
-                className="w-full px-3 py-2 border rounded"
-                placeholder="Rp 0"
-              />
-            </div>
-          </div>
-
           {/* Biaya Kirim */}
           <div className="grid grid-cols-3 items-center gap-4">
             <label className="font-medium">Biaya Kirim</label>
@@ -189,37 +245,79 @@ export default function ModalBilling({ isOpen, onClose, onSuccess, pembelianData
             </div>
           </div>
 
-          {/* Total Harga Produk */}
-          <div className="grid grid-cols-3 items-center gap-4">
-            <label className="font-medium">Total Harga Produk</label>
-            <input
-              type="text"
-              value={`Rp ${calculatedData.total_harga_produk.toLocaleString('id-ID')}`}
-              disabled
-              className="col-span-2 px-3 py-2 border rounded bg-gray-100"
-            />
+          <hr className="my-4" />
+
+          {/* DP / Uang Muka (OPSIONAL) */}
+          <div className="bg-green-50 p-4 rounded-lg space-y-3">
+            <h3 className="font-semibold text-green-800">💰 Pembayaran DP (Opsional)</h3>
+            
+            {/* Uang Muka */}
+            <div className="grid grid-cols-3 items-center gap-4">
+              <label className="font-medium text-sm">DP / Uang Muka</label>
+              <div className="col-span-2">
+                <input
+                  type="text"
+                  value={formData.uang_muka}
+                  onChange={(e) => handleChangeNumber('uang_muka', e.target.value)}
+                  className="w-full px-3 py-2 border rounded"
+                  placeholder="Rp 0 (kosongkan jika bayar nanti)"
+                />
+              </div>
+            </div>
+
+            {/* Rekening Bayar */}
+            {hasDP && (
+              <div className="grid grid-cols-3 items-center gap-4">
+                <label className="font-medium text-sm">
+                  Rekening Bayar <span className="text-red-500">*</span>
+                </label>
+                <div className="col-span-2">
+                  <select
+                    value={formData.rekening_bayar}
+                    onChange={handleRekeningChange}
+                    className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-green-500"
+                    required
+                  >
+                    <option value="">-- Pilih Rekening --</option>
+                    {rekenings.map((rek) => (
+                      <option key={rek.id} value={rek.nama_kas}>
+                        {rek.nama_kas} {rek.no_rekening ? `(${rek.no_rekening})` : ''} - Rp {rek.saldo.toLocaleString('id-ID')}
+                      </option>
+                    ))}
+                  </select>
+                  {rekenings.length === 0 && (
+                    <p className="text-xs text-red-500 mt-1">Tidak ada rekening tersedia</p>
+                  )}
+                  {selectedKas && (
+                    <p className="text-xs text-green-700 mt-1">
+                      Saldo tersedia: Rp {selectedKas.saldo.toLocaleString('id-ID')}
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Terbayar */}
-          <div className="grid grid-cols-3 items-center gap-4">
-            <label className="font-medium">Terbayar (Uang Muka)</label>
-            <input
-              type="text"
-              value={calculatedData.terbayar.toLocaleString('id-ID')}
-              disabled
-              className="col-span-2 px-3 py-2 border rounded bg-gray-100"
-            />
-          </div>
+          <hr className="my-4" />
 
-          {/* Tagihan */}
-          <div className="grid grid-cols-3 items-center gap-4">
-            <label className="font-medium">Tagihan</label>
-            <input
-              type="text"
-              value={`Rp ${calculatedData.tagihan.toLocaleString('id-ID')}`}
-              disabled
-              className="col-span-2 px-3 py-2 border rounded bg-gray-100 font-bold"
-            />
+          {/* Summary */}
+          <div className="bg-gray-50 p-4 rounded space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">Total Harga Produk:</span>
+              <span className="font-semibold">Rp {calculatedData.total_harga_produk.toLocaleString('id-ID')}</span>
+            </div>
+            
+            {hasDP && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">DP yang Dibayar:</span>
+                <span className="font-semibold text-green-600">- Rp {calculatedData.terbayar.toLocaleString('id-ID')}</span>
+              </div>
+            )}
+            
+            <div className="flex justify-between pt-2 border-t">
+              <span className="font-bold">Sisa Hutang:</span>
+              <span className="font-bold text-red-600">Rp {calculatedData.sisa_hutang.toLocaleString('id-ID')}</span>
+            </div>
           </div>
 
           {/* Actions */}
