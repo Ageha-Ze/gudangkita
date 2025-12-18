@@ -128,26 +128,26 @@ export default function DashboardPage() {
 
       <div className="flex-1 flex flex-col overflow-hidden">
 
-        <main className="flex-1 overflow-y-auto p-6">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6">
           {/* Header */}
-          <div className="mb-4 sm:mb-6">
-  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6">
+          <div className="mb-3 sm:mb-4 md:mb-6">
+  <div className="flex flex-col gap-3 sm:gap-4 md:gap-6">
     <div className="flex-1">
-      <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900 mb-1">Dashboard Analytics</h1>
-      <p className="text-sm sm:text-base text-gray-600">Selamat datang kembali! Berikut ringkasan bisnis Anda hari ini.</p>
+      <h1 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-gray-900 mb-1">Dashboard Analytics</h1>
+      <p className="text-xs sm:text-sm md:text-base text-gray-600 leading-relaxed">Selamat datang kembali! Berikut ringkasan bisnis Anda hari ini.</p>
     </div>
 
-    <div className="bg-white px-4 sm:px-5 py-3 rounded-xl shadow-sm border border-gray-200 w-full sm:w-auto sm:min-w-[240px]">
+    <div className="bg-white px-3 sm:px-4 md:px-5 py-3 rounded-xl shadow-sm border border-gray-200 w-full max-w-xs sm:max-w-sm md:min-w-[240px]">
       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Pilih Kantor</label>
       <select
         value={selectedCabangId || ''}
         onChange={(e) => setSelectedCabangId(e.target.value)}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50"
       >
         {cabangList.length > 0 ? (
           cabangList.map((cabang) => (
             <option key={cabang.id} value={cabang.id}>
-              {cabang.nama_cabang}
+              {cabang.nama_cabang.length > 20 ? `${cabang.nama_cabang.substring(0, 20)}...` : cabang.nama_cabang}
             </option>
           ))
         ) : (
@@ -196,11 +196,11 @@ export default function DashboardPage() {
 )}
 
           {/* Main KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
+          <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-5 mb-4 sm:mb-6">
             <MetricCard
               title="Kas Saat Ini"
               value={formatCurrency(dashboardData?.kasSaatIni || 0)}
-              icon={<Wallet className="w-5 h-5" />}
+              icon={<Wallet className="w-4 h-4 sm:w-5 sm:h-5" />}
               trend="+12.5%"
               trendUp={true}
               gradient="from-blue-500 to-blue-600"
@@ -208,7 +208,7 @@ export default function DashboardPage() {
             <MetricCard
               title="Total Piutang"
               value={formatCurrency(dashboardData?.totalPiutang || 0)}
-              icon={<CreditCard className="w-5 h-5" />}
+              icon={<CreditCard className="w-4 h-4 sm:w-5 sm:h-5" />}
               trend="-3.2%"
               trendUp={false}
               gradient="from-violet-500 to-violet-600"
@@ -216,7 +216,7 @@ export default function DashboardPage() {
             <MetricCard
               title="Pendapatan Bulan Ini"
               value={formatCurrency(dashboardData?.pendapatanBulanIni || 0)}
-              icon={<TrendingUp className="w-5 h-5" />}
+              icon={<TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" />}
               trend="+18.4%"
               trendUp={true}
               gradient="from-emerald-500 to-emerald-600"
@@ -224,7 +224,7 @@ export default function DashboardPage() {
             <MetricCard
               title="Total Hutang"
               value={formatCurrency(dashboardData?.totalHutang || 0)}
-              icon={<TrendingDown className="w-5 h-5" />}
+              icon={<TrendingDown className="w-4 h-4 sm:w-5 sm:h-5" />}
               trend="+5.7%"
               trendUp={false}
               gradient="from-rose-500 to-rose-600"
@@ -232,63 +232,64 @@ export default function DashboardPage() {
           </div>
 
           {/* Charts Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
             {/* Sales Chart */}
-            <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <div className="flex items-center justify-between mb-6">
+            <div className="xl:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">Tren Penjualan</h3>
-                  <p className="text-sm text-gray-500 mt-1">
+                  <h3 className="text-base sm:text-lg font-bold text-gray-900">Tren Penjualan</h3>
+                  <p className="text-xs sm:text-sm text-gray-500 mt-1">
                     Performa {salesPeriod === '6' ? '6 bulan' : '1 tahun'} terakhir
                   </p>
                 </div>
-                <div className="flex gap-2">
-                  <button 
+                <div className="flex gap-1 sm:gap-2">
+                  <button
                     onClick={() => setSalesPeriod('6')}
-                    className={`px-4 py-2 text-xs font-semibold rounded-lg shadow-sm transition-colors ${
-                      salesPeriod === '6' 
-                        ? 'bg-blue-600 text-white' 
+                    className={`px-2 sm:px-4 py-2 text-xs font-semibold rounded-lg shadow-sm transition-colors ${
+                      salesPeriod === '6'
+                        ? 'bg-blue-600 text-white'
                         : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
-                    6 Bulan
+                    6B
                   </button>
-                  <button 
+                  <button
                     onClick={() => setSalesPeriod('12')}
-                    className={`px-4 py-2 text-xs font-semibold rounded-lg shadow-sm transition-colors ${
-                      salesPeriod === '12' 
-                        ? 'bg-blue-600 text-white' 
+                    className={`px-2 sm:px-4 py-2 text-xs font-semibold rounded-lg shadow-sm transition-colors ${
+                      salesPeriod === '12'
+                        ? 'bg-blue-600 text-white'
                         : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
-                    1 Tahun
+                    1T
                   </button>
                 </div>
               </div>
 
-              <div className="w-full h-[250px] sm:h-[300px] md:h-[350px]">
+              <div className="w-full h-[200px] sm:h-[250px] md:h-[300px] lg:h-[350px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={dashboardData?.salesData || []} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
+                  <LineChart data={dashboardData?.salesData || []} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                     <XAxis
                       dataKey="month"
-                      tick={{ fill: '#6b7280', fontSize: 10 }}
+                      tick={{ fill: '#6b7280', fontSize: 8 }}
                       angle={-45}
                       textAnchor="end"
-                      height={60}
+                      height={50}
                       interval={0}
                     />
                     <YAxis
-                      tick={{ fill: '#6b7280', fontSize: 10 }}
+                      tick={{ fill: '#6b7280', fontSize: 8 }}
                       tickFormatter={(value) => formatCurrency(value).replace(/\.00$/, '')}
+                      width={60}
                     />
                     <Tooltip
                       contentStyle={{
                         backgroundColor: '#fff',
                         border: '1px solid #e5e7eb',
-                        borderRadius: '8px',
+                        borderRadius: '6px',
                         boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                        fontSize: '12px'
+                        fontSize: '11px'
                       }}
                       formatter={(value: number) => formatCurrency(value)}
                       labelStyle={{ color: '#374151', fontWeight: '500' }}
@@ -298,8 +299,8 @@ export default function DashboardPage() {
                       dataKey="sales"
                       stroke="#3b82f6"
                       strokeWidth={2}
-                      dot={{ fill: '#3b82f6', r: 4 }}
-                      activeDot={{ r: 6, stroke: '#3b82f6', strokeWidth: 2 }}
+                      dot={{ fill: '#3b82f6', r: 3 }}
+                      activeDot={{ r: 5, stroke: '#3b82f6', strokeWidth: 2 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -307,21 +308,21 @@ export default function DashboardPage() {
             </div>
 
             {/* Pie Chart - Komposisi Keuangan */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h4 className="text-lg font-bold text-gray-900 mb-4">Komposisi Keuangan</h4>
-              
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 sm:p-4 md:p-6">
+              <h4 className="text-sm sm:text-base md:text-lg font-bold text-gray-900 mb-3 sm:mb-4">Komposisi Keuangan</h4>
+
               {pieData.length > 0 ? (
                 <>
-                  <div className="w-full h-[240px] flex items-center justify-center">
+                  <div className="w-full h-[180px] sm:h-[200px] md:h-[240px] flex items-center justify-center">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie
                           data={pieData}
                           cx="50%"
                           cy="50%"
-                          innerRadius={60}
-                          outerRadius={90}
-                          paddingAngle={5}
+                          innerRadius={40}
+                          outerRadius={60}
+                          paddingAngle={3}
                           dataKey="value"
                         >
                           {pieData.map((entry, index) => (
@@ -332,26 +333,26 @@ export default function DashboardPage() {
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
-                  <div className="mt-4 space-y-2">
+                  <div className="mt-3 sm:mt-4 space-y-2">
                     {pieData.map((item, idx) => (
-                      <div key={idx} className="flex items-center justify-between text-sm">
+                      <div key={idx} className="flex items-center justify-between text-xs sm:text-sm">
                         <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
-                          <span className="text-gray-700 font-medium">{item.name}</span>
+                          <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
+                          <span className="text-gray-700 font-medium truncate">{item.name}</span>
                         </div>
-                        <span className="font-semibold text-gray-900">{formatCurrency(item.value)}</span>
+                        <span className="font-semibold text-gray-900 text-xs sm:text-sm">{formatCurrency(item.value)}</span>
                       </div>
                     ))}
                   </div>
                 </>
               ) : (
-                <div className="w-full h-[240px] flex flex-col items-center justify-center text-center px-4">
-                  <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                    <Package className="w-10 h-10 text-gray-400" />
+                <div className="w-full h-[180px] sm:h-[200px] md:h-[240px] flex flex-col items-center justify-center text-center px-3 sm:px-4">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gray-100 rounded-full flex items-center justify-center mb-3 sm:mb-4">
+                    <Package className="w-8 h-8 sm:w-10 sm:h-10 text-gray-400" />
                   </div>
-                  <p className="text-gray-600 font-medium mb-1">Belum Ada Data</p>
-                  <p className="text-sm text-gray-500">
-                    Tidak ada transaksi penjualan<br />bulan ini untuk ditampilkan
+                  <p className="text-gray-600 font-medium text-sm mb-1">Belum Ada Data</p>
+                  <p className="text-xs sm:text-sm text-gray-500 leading-tight">
+                    Tidak ada transaksi penjualan bulan ini untuk ditampilkan
                   </p>
                 </div>
               )}
@@ -359,12 +360,12 @@ export default function DashboardPage() {
           </div>
 
           {/* Financial Summary */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
             <SummaryCard
               title="Laba Kotor"
               value={formatCurrency(labaKotor)}
               subtitle="Pendapatan - HPP"
-              icon={<DollarSign className="w-5 h-5" />}
+              icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
               color={labaKotor >= 0 ? "emerald" : "rose"}
               isNegative={labaKotor < 0}
             />
@@ -372,7 +373,7 @@ export default function DashboardPage() {
               title="Margin Laba"
               value={`${marginLaba >= 0 ? '+' : ''}${marginLaba.toFixed(1)}%`}
               subtitle="Persentase keuntungan"
-              icon={<BarChart3 className="w-5 h-5" />}
+              icon={<BarChart3 className="w-4 h-4 sm:w-5 sm:h-5" />}
               color={marginLaba >= 0 ? "blue" : "rose"}
               isNegative={marginLaba < 0}
             />
@@ -380,14 +381,14 @@ export default function DashboardPage() {
               title="Total HPP"
               value={formatCurrency(hpp)}
               subtitle="Harga pokok penjualan"
-              icon={<Package className="w-5 h-5" />}
+              icon={<Package className="w-4 h-4 sm:w-5 sm:h-5" />}
               color="amber"
               isNegative={false}
             />
           </div>
 
           {/* Business Metrics */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
             <MetricDetailCard
               title="Rasio Kas/Hutang"
               value={`${rasioKasHutang.toFixed(2)}x`}

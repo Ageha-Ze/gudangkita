@@ -2,12 +2,15 @@
 
 import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import { revalidatePath } from 'next/cache';
+import { databaseOperationWithRetry } from '@/lib/apiRetry';
 
 type ActionResult = {
   success: boolean;
   message?: string;
   error?: string;
   data?: any;
+  isOffline?: boolean;
+  queued?: boolean;
 };
 
 // Definisi UserLevel sesuai dengan enum di database
@@ -44,25 +47,17 @@ export async function addUser(formData: {
   password: string;
   level: string;
 }): Promise<ActionResult> {
-  try {
+  const result = await databaseOperationWithRetry(async () => {
     const supabase = await supabaseAuthenticated();
-    
+
     // Validasi input
     if (!formData.username || !formData.password) {
-      return {
-        success: false,
-        error: 'Username dan password harus diisi',
-        message: 'Data tidak lengkap'
-      };
+      throw new Error('Username dan password harus diisi');
     }
 
     // Validasi level
     if (!isValidUserLevel(formData.level)) {
-      return {
-        success: false,
-        error: `Level tidak valid. Pilih salah satu: super_admin, admin, keuangan, kasir, gudang, sales`,
-        message: 'Level user tidak valid'
-      };
+      throw new Error(`Level tidak valid. Pilih salah satu: super_admin, admin, keuangan, kasir, gudang, sales`);
     }
 
     const { data, error } = await supabase
@@ -71,27 +66,27 @@ export async function addUser(formData: {
       .select()
       .single();
 
-    if (error) {
-      console.error('Error adding user:', error);
-      return { 
-        success: false, 
-        error: error.message,
-        message: 'Gagal menambahkan user'
-      };
-    }
+    if (error) throw error;
+    return data;
+  }, 'Create User');
 
+  if (result.success) {
     revalidatePath('/master/user');
-    return { 
+    return {
       success: true,
-      data,
-      message: 'User berhasil ditambahkan'
+      data: result.data,
+      message: 'User berhasil ditambahkan',
+      isOffline: result.isRetry,
+      queued: result.isRetry
     };
-  } catch (error: any) {
-    console.error('Exception in addUser:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Unknown error',
-      message: 'Terjadi kesalahan saat menambahkan user'
+  } else {
+    console.error('Error adding user:', result.error);
+    return {
+      success: false,
+      error: result.error,
+      message: 'Gagal menambahkan user',
+      isOffline: true,
+      queued: true
     };
   }
 }
@@ -104,25 +99,17 @@ export async function updateUser(
     level: string;
   }
 ): Promise<ActionResult> {
-  try {
+  const result = await databaseOperationWithRetry(async () => {
     const supabase = await supabaseAuthenticated();
-    
+
     // Validasi input
     if (!formData.username) {
-      return {
-        success: false,
-        error: 'Username harus diisi',
-        message: 'Data tidak lengkap'
-      };
+      throw new Error('Username harus diisi');
     }
 
     // Validasi level
     if (!isValidUserLevel(formData.level)) {
-      return {
-        success: false,
-        error: `Level tidak valid. Pilih salah satu: super_admin, admin, keuangan, kasir, gudang, sales`,
-        message: 'Level user tidak valid'
-      };
+      throw new Error(`Level tidak valid. Pilih salah satu: super_admin, admin, keuangan, kasir, gudang, sales`);
     }
 
     const updateData: any = {
@@ -141,63 +128,63 @@ export async function updateUser(
       .select()
       .single();
 
-    if (error) {
-      console.error('Error updating user:', error);
-      return { 
-        success: false, 
-        error: error.message,
-        message: 'Gagal mengupdate user'
-      };
-    }
+    if (error) throw error;
+    return data;
+  }, 'Update User');
 
+  if (result.success) {
     revalidatePath('/master/user');
-    return { 
+    return {
       success: true,
-      data,
-      message: 'User berhasil diupdate'
+      data: result.data,
+      message: 'User berhasil diupdate',
+      isOffline: result.isRetry,
+      queued: result.isRetry
     };
-  } catch (error: any) {
-    console.error('Exception in updateUser:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Unknown error',
-      message: 'Terjadi kesalahan saat mengupdate user'
+  } else {
+    console.error('Error updating user:', result.error);
+    return {
+      success: false,
+      error: result.error,
+      message: 'Gagal mengupdate user',
+      isOffline: true,
+      queued: true
     };
   }
 }
 
 export async function deleteUser(id: number): Promise<ActionResult> {
-  try {
+  const result = await databaseOperationWithRetry(async () => {
     const supabase = await supabaseAuthenticated();
-    
+
     // Optional: Check if user is being used in other tables
     // Add your business logic here if needed
-    
+
     const { error } = await supabase
       .from('users')
       .delete()
       .eq('id', id);
 
-    if (error) {
-      console.error('Error deleting user:', error);
-      return { 
-        success: false, 
-        error: error.message,
-        message: 'Gagal menghapus user'
-      };
-    }
+    if (error) throw error;
+    return { success: true };
+  }, 'Delete User');
 
+  if (result.success) {
     revalidatePath('/master/user');
-    return { 
+    return {
       success: true,
-      message: 'User berhasil dihapus'
+      message: 'User berhasil dihapus',
+      isOffline: result.isRetry,
+      queued: result.isRetry
     };
-  } catch (error: any) {
-    console.error('Exception in deleteUser:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Unknown error',
-      message: 'Terjadi kesalahan saat menghapus user'
+  } else {
+    console.error('Error deleting user:', result.error);
+    return {
+      success: false,
+      error: result.error,
+      message: 'Gagal menghapus user',
+      isOffline: true,
+      queued: true
     };
   }
 }

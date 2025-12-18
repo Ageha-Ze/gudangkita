@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, ArrowUpCircle, ArrowDownCircle, Calendar, Search, Download, Trash2, Edit, X } from 'lucide-react';
+import { Plus, ArrowUpCircle, ArrowDownCircle, Calendar, Search, Download, Trash2, Edit, X, ChevronDown } from 'lucide-react';
 
 interface TransaksiKas {
   id: number;
@@ -316,45 +316,51 @@ export default function TransaksiKasHarian() {
           </div>
         )}
 
-        {/* Actions Bar */}
-        <div className="bg-white rounded-xl shadow-md p-4 mb-6">
-          <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-            <div className="flex gap-3 w-full md:w-auto">
-              <div className="relative w-full sm:flex-1 sm:max-w-[200px]">
-  <select
-    value={selectedKas}
-    onChange={(e) => setSelectedKas(Number(e.target.value))}
-    className="w-full px-3 py-2 sm:px-4 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent appearance-none bg-white"
-  >
-    {kasList.map(kas => (
-      <option key={kas.id} value={kas.id}>
-        {kas.nama_kas} - {formatCurrency(kas.saldo)}
-      </option>
-    ))}
-  </select>
-</div>
+       {/* Actions Bar */}
+<div className="bg-white rounded-xl shadow-md p-3 sm:p-4 mb-6">
+  <div className="flex flex-col gap-3 md:flex-row md:gap-4 md:items-center md:justify-between">
+    {/* Filters - Stack vertical di mobile */}
+    <div className="flex flex-col gap-3 w-full md:w-auto md:flex-row">
+      {/* Kas Select */}
+      <div className="relative w-full md:max-w-[200px]">
+        <select
+          value={selectedKas}
+          onChange={(e) => setSelectedKas(Number(e.target.value))}
+          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent appearance-none bg-white"
+        >
+          {kasList.map(kas => (
+            <option key={kas.id} value={kas.id}>
+              {kas.nama_kas} - {formatCurrency(kas.saldo)}
+            </option>
+          ))}
+        </select>
+        {/* Custom dropdown arrow */}
+        <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+      </div>
 
-<div className="relative w-full sm:flex-1 sm:max-w-[180px]">
-  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
-  <input
-    type="date"
-    value={selectedDate}
-    onChange={(e) => setSelectedDate(e.target.value)}
-    className="w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-  />
-</div>
+      {/* Date Input */}
+      <div className="relative w-full md:max-w-[180px]">
+        <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+        <input
+          type="date"
+          value={selectedDate}
+          onChange={(e) => setSelectedDate(e.target.value)}
+          className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+        />
+      </div>
 
-<div className="relative w-full sm:flex-1 sm:max-w-[250px]">
-  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
-  <input
-    type="text"
-    placeholder="Cari transaksi..."
-    value={searchTerm}
-    onChange={(e) => setSearchTerm(e.target.value)}
-    className="w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 text-sm sm:text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-  />
-</div>
-            </div>
+      {/* Search Input */}
+      <div className="relative w-full md:max-w-[250px]">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+        <input
+          type="text"
+          placeholder="Cari transaksi..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+        />
+      </div>
+    </div>
 
             <div className="flex gap-2 w-full sm:w-auto justify-end sm:justify-start">
   <button

@@ -916,70 +916,70 @@ Proses ini akan memperbaiki data stock secara otomatis.
                 </table>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                 {filteredStocks.map((item) => {
                   const isLowStock = item.stock > 0 && item.stock < 100;
                   const isNegative = item.stock < 0;
                   return (
                     <div
                       key={`${item.produk_id}-${item.cabang_id}`}
-                      className={`bg-gradient-to-br from-white to-gray-50 rounded-xl p-5 border-2 ${
+                      className={`bg-gradient-to-br from-white to-gray-50 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 border-2 ${
                         isNegative ? 'border-red-500 bg-red-50' :
                         isLowStock ? 'border-orange-300' : 'border-gray-200'
                       } hover:shadow-lg transition-all duration-200`}
                     >
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <h3 className="font-bold text-gray-800 text-lg">{item.nama_produk}</h3>
-                          <p className="text-xs text-gray-500">{item.kode_produk}</p>
+                      <div className="flex items-start justify-between mb-2 sm:mb-3">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-bold text-gray-800 text-sm sm:text-base md:text-lg truncate">{item.nama_produk}</h3>
+                          <p className="text-xs text-gray-500 truncate">{item.kode_produk}</p>
                         </div>
                         {isNegative ? (
-                          <span className="px-2 py-1 bg-red-600 text-white text-xs font-semibold rounded-full animate-pulse">
+                          <span className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-red-600 text-white text-xs font-semibold rounded-full animate-pulse flex-shrink-0">
                             MINUS!
                           </span>
                         ) : isLowStock ? (
-                          <span className="px-2 py-1 bg-orange-100 text-orange-600 text-xs font-semibold rounded-full">
+                          <span className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-orange-100 text-orange-600 text-xs font-semibold rounded-full flex-shrink-0">
                             LOW
                           </span>
                         ) : null}
                       </div>
 
-                      <div className="mb-4">
+                      <div className="mb-3 sm:mb-4">
                         <div className="flex items-baseline gap-2">
-                          <span className={`text-3xl font-bold ${
+                          <span className={`text-xl sm:text-2xl md:text-3xl font-bold ${
                             isNegative ? 'text-red-600' :
                             isLowStock ? 'text-orange-600' : 'text-gray-800'
                           }`}>
                             {item.stock.toFixed(item.satuan.toLowerCase() === 'kg' ? 3 : 2)}
                           </span>
-                          <span className="text-gray-500 text-sm">{item.satuan}</span>
+                          <span className="text-gray-500 text-xs sm:text-sm">{item.satuan}</span>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1">📍 {item.cabang}</p>
+                        <p className="text-xs text-gray-500 mt-1 truncate">📍 {item.cabang}</p>
                         {(item.stock_masuk > 0 || item.stock_keluar > 0) && (
                           <div className="mt-2 text-xs text-gray-600 space-y-0.5">
-                            <p>↗️ Masuk: <span className="font-semibold text-green-600">{item.stock_masuk?.toFixed(2) || 0}</span></p>
-                            <p>↘️ Keluar: <span className="font-semibold text-red-600">{item.stock_keluar?.toFixed(2) || 0}</span></p>
+                            <p className="truncate">↗️ Masuk: <span className="font-semibold text-green-600">{item.stock_masuk?.toFixed(2) || 0}</span></p>
+                            <p className="truncate">↘️ Keluar: <span className="font-semibold text-red-600">{item.stock_keluar?.toFixed(2) || 0}</span></p>
                           </div>
                         )}
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3 mb-4 p-3 bg-white rounded-lg border border-gray-100">
-                        <div>
-                          <p className="text-xs text-gray-500">HPP</p>
-                          <p className="text-sm font-semibold text-gray-700">
+                      <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-3 sm:mb-4 p-2 sm:p-3 bg-white rounded-lg border border-gray-100">
+                        <div className="min-w-0">
+                          <p className="text-xs text-gray-500 truncate">HPP</p>
+                          <p className="text-xs sm:text-sm font-semibold text-gray-700 truncate">
                             Rp {item.hpp.toLocaleString('id-ID')}
                           </p>
                         </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Harga Jual</p>
-                          <p className="text-sm font-semibold text-gray-700">
+                        <div className="min-w-0">
+                          <p className="text-xs text-gray-500 truncate">Harga Jual</p>
+                          <p className="text-xs sm:text-sm font-semibold text-gray-700 truncate">
                             Rp {item.harga_jual.toLocaleString('id-ID')}
                           </p>
                         </div>
                       </div>
 
-                      <div className="mb-4">
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
+                      <div className="mb-3 sm:mb-4">
+                        <span className={`inline-flex items-center px-2 py-1 sm:px-3 rounded-full text-xs font-semibold ${
                           item.margin >= 20 ? 'bg-green-100 text-green-700' :
                           item.margin >= 10 ? 'bg-yellow-100 text-yellow-700' :
                           'bg-red-100 text-red-700'
@@ -988,31 +988,30 @@ Proses ini akan memperbaiki data stock secara otomatis.
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-2">
                         {canManage && (
                           <button
                             onClick={() => handleManageStock(item)}
-                            className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center gap-1"
+                            className="w-full p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center gap-1 text-xs sm:text-sm"
                             title="Manage Stock & Price"
                           >
-                            <Edit className="w-4 h-4" />
-                            <span className="text-xs hidden sm:inline">Manage</span>
+                            <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
+                            <span className="hidden xs:inline">Manage</span>
                           </button>
                         )}
-                        {/* History button only shown in table view with specific branch filter */}
-                      </div>
 
-                      {/* Delete Button - Full Width Below - Only for gudang */}
-                      {canManage && (
-                        <button
-                          onClick={() => handleDeleteStock(item)}
-                          className="w-full mt-2 p-2 bg-gray-700 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center justify-center gap-2 text-sm"
-                          title="Delete Stock"
-                        >
-                          <X className="w-4 h-4" />
-                          Hapus Stock
-                        </button>
-                      )}
+                        {/* Delete Button - Full Width Below - Only for gudang */}
+                        {canManage && (
+                          <button
+                            onClick={() => handleDeleteStock(item)}
+                            className="w-full p-2 bg-gray-700 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center justify-center gap-1 text-xs sm:text-sm"
+                            title="Delete Stock"
+                          >
+                            <X className="w-3 h-3 sm:w-4 sm:h-4" />
+                            <span className="hidden xs:inline">Hapus Stock</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}

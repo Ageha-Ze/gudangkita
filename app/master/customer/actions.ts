@@ -6,12 +6,15 @@
 import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import { revalidatePath } from 'next/cache';
 import { CustomerFormData } from '@/types/customer';
+import { databaseOperationWithRetry } from '@/lib/apiRetry';
 
 type ActionResult<T = any> = {
   success: boolean;
   data?: T;
   error?: string;
   message?: string;
+  isOffline?: boolean;
+  queued?: boolean;
 };
 
 // Generate kode customer otomatis
@@ -165,7 +168,7 @@ export async function getCustomerById(id: number): Promise<ActionResult> {
 
 // Create new customer
 export async function createCustomer(formData: CustomerFormData): Promise<ActionResult> {
-  try {
+  const result = await databaseOperationWithRetry(async () => {
     const supabase = await supabaseAuthenticated();
 
     // Generate kode customer jika tidak ada
@@ -183,34 +186,34 @@ export async function createCustomer(formData: CustomerFormData): Promise<Action
       .select()
       .single();
 
-    if (error) {
-      console.error('Error creating customer:', error);
-      return {
-        success: false,
-        error: error.message,
-        message: 'Gagal menambahkan customer'
-      };
-    }
+    if (error) throw error;
+    return data;
+  }, 'Create Customer');
 
+  if (result.success) {
     revalidatePath('/master/customer');
     return {
       success: true,
-      data,
-      message: 'Customer berhasil ditambahkan'
+      data: result.data,
+      message: 'Customer berhasil ditambahkan',
+      isOffline: result.isRetry,
+      queued: result.isRetry
     };
-  } catch (error: any) {
-    console.error('Unexpected error in createCustomer:', error);
+  } else {
+    console.error('Error creating customer:', result.error);
     return {
       success: false,
-      error: error.message || 'Unknown error',
-      message: 'Terjadi kesalahan saat menambahkan customer'
+      error: result.error,
+      message: 'Gagal menambahkan customer',
+      isOffline: true,
+      queued: true
     };
   }
 }
 
 // Update customer
 export async function updateCustomer(id: number, formData: CustomerFormData): Promise<ActionResult> {
-  try {
+  const result = await databaseOperationWithRetry(async () => {
     const supabase = await supabaseAuthenticated();
 
     const { data, error } = await supabase
@@ -225,34 +228,34 @@ export async function updateCustomer(id: number, formData: CustomerFormData): Pr
       .select()
       .single();
 
-    if (error) {
-      console.error('Error updating customer:', error);
-      return {
-        success: false,
-        error: error.message,
-        message: 'Gagal mengupdate customer'
-      };
-    }
+    if (error) throw error;
+    return data;
+  }, 'Update Customer');
 
+  if (result.success) {
     revalidatePath('/master/customer');
     return {
       success: true,
-      data,
-      message: 'Customer berhasil diupdate'
+      data: result.data,
+      message: 'Customer berhasil diupdate',
+      isOffline: result.isRetry,
+      queued: result.isRetry
     };
-  } catch (error: any) {
-    console.error('Unexpected error in updateCustomer:', error);
+  } else {
+    console.error('Error updating customer:', result.error);
     return {
       success: false,
-      error: error.message || 'Unknown error',
-      message: 'Terjadi kesalahan saat mengupdate customer'
+      error: result.error,
+      message: 'Gagal mengupdate customer',
+      isOffline: true,
+      queued: true
     };
   }
 }
 
 // Delete customer
 export async function deleteCustomer(id: number): Promise<ActionResult> {
-  try {
+  const result = await databaseOperationWithRetry(async () => {
     const supabase = await supabaseAuthenticated();
 
     const { error } = await supabase
@@ -260,26 +263,26 @@ export async function deleteCustomer(id: number): Promise<ActionResult> {
       .delete()
       .eq('id', id);
 
-    if (error) {
-      console.error('Error deleting customer:', error);
-      return {
-        success: false,
-        error: error.message,
-        message: 'Gagal menghapus customer'
-      };
-    }
+    if (error) throw error;
+    return { success: true };
+  }, 'Delete Customer');
 
+  if (result.success) {
     revalidatePath('/master/customer');
     return {
       success: true,
-      message: 'Customer berhasil dihapus'
+      message: 'Customer berhasil dihapus',
+      isOffline: result.isRetry,
+      queued: result.isRetry
     };
-  } catch (error: any) {
-    console.error('Unexpected error in deleteCustomer:', error);
+  } else {
+    console.error('Error deleting customer:', result.error);
     return {
       success: false,
-      error: error.message || 'Unknown error',
-      message: 'Terjadi kesalahan saat menghapus customer'
+      error: result.error,
+      message: 'Gagal menghapus customer',
+      isOffline: true,
+      queued: true
     };
   }
 }

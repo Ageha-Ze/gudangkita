@@ -206,7 +206,7 @@ export default function KonsinyasiPage() {
             type="text"
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
-            className="flex-1 sm:flex-none px-3 sm:px-4 py-2 text-sm border border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="flex-1 min-w-0 px-3 py-2 text-sm border border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
             placeholder="Cari..."
           />
         </div>

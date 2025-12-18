@@ -2,6 +2,7 @@
 
 import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import { revalidatePath } from 'next/cache';
+import { databaseOperationWithRetry } from '@/lib/apiRetry';
 
 // Define return types for consistency
 type ActionResult = {
@@ -10,6 +11,8 @@ type ActionResult = {
   error?: string;
   warning?: string;
   data?: any;
+  isOffline?: boolean;
+  queued?: boolean;
   pagination?: {
     page: number;
     limit: number;
@@ -123,44 +126,44 @@ export async function getTransaksiKas(kasId: number): Promise<ActionResult> {
 }
 
 export async function addKas(formData: any): Promise<ActionResult> {
-  try {
+  const result = await databaseOperationWithRetry(async () => {
     const supabase = await supabaseAuthenticated();
-    
+
     const { data, error } = await supabase
       .from('kas')
       .insert([formData])
       .select()
       .single();
 
-    if (error) {
-      console.error('Error adding kas:', error);
-      return { 
-        success: false, 
-        error: error.message,
-        message: 'Gagal menambahkan kas'
-      };
-    }
+    if (error) throw error;
+    return data;
+  }, 'Create Kas');
 
+  if (result.success) {
     revalidatePath('/master/kas');
-    return { 
+    return {
       success: true,
-      data,
-      message: 'Kas berhasil ditambahkan'
+      data: result.data,
+      message: 'Kas berhasil ditambahkan',
+      isOffline: result.isRetry,
+      queued: result.isRetry
     };
-  } catch (error: any) {
-    console.error('Unexpected error in addKas:', error);
+  } else {
+    console.error('Error adding kas:', result.error);
     return {
       success: false,
-      error: error.message || 'Unknown error',
-      message: 'Terjadi kesalahan saat menambahkan kas'
+      error: result.error,
+      message: 'Gagal menambahkan kas',
+      isOffline: true,
+      queued: true
     };
   }
 }
 
 export async function updateKas(id: number, formData: any): Promise<ActionResult> {
-  try {
+  const result = await databaseOperationWithRetry(async () => {
     const supabase = await supabaseAuthenticated();
-    
+
     const { data, error } = await supabase
       .from('kas')
       .update(formData)
@@ -168,35 +171,35 @@ export async function updateKas(id: number, formData: any): Promise<ActionResult
       .select()
       .single();
 
-    if (error) {
-      console.error('Error updating kas:', error);
-      return { 
-        success: false, 
-        error: error.message,
-        message: 'Gagal mengupdate kas'
-      };
-    }
+    if (error) throw error;
+    return data;
+  }, 'Update Kas');
 
+  if (result.success) {
     revalidatePath('/master/kas');
-    return { 
+    return {
       success: true,
-      data,
-      message: 'Kas berhasil diupdate'
+      data: result.data,
+      message: 'Kas berhasil diupdate',
+      isOffline: result.isRetry,
+      queued: result.isRetry
     };
-  } catch (error: any) {
-    console.error('Unexpected error in updateKas:', error);
+  } else {
+    console.error('Error updating kas:', result.error);
     return {
       success: false,
-      error: error.message || 'Unknown error',
-      message: 'Terjadi kesalahan saat mengupdate kas'
+      error: result.error,
+      message: 'Gagal mengupdate kas',
+      isOffline: true,
+      queued: true
     };
   }
 }
 
 export async function deleteKas(id: number): Promise<ActionResult> {
-  try {
+  const result = await databaseOperationWithRetry(async () => {
     const supabase = await supabaseAuthenticated();
-    
+
     // Get current user info
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -213,22 +216,8 @@ export async function deleteKas(id: number): Promise<ActionResult> {
       .eq('id', id)
       .single();
 
-    if (fetchError) {
-      console.error('Error fetching kas for deletion:', fetchError);
-      return { 
-        success: false, 
-        error: fetchError.message,
-        message: 'Gagal mengambil data kas'
-      };
-    }
-
-    if (!kasData) {
-      return { 
-        success: false, 
-        error: 'Data kas tidak ditemukan',
-        message: 'Data kas tidak ditemukan'
-      };
-    }
+    if (fetchError) throw fetchError;
+    if (!kasData) throw new Error('Data kas tidak ditemukan');
 
     // Catat removal ke tabel kas_removal_log
     const removalLog = {
@@ -260,26 +249,26 @@ export async function deleteKas(id: number): Promise<ActionResult> {
       .delete()
       .eq('id', id);
 
-    if (error) {
-      console.error('Error deleting kas:', error);
-      return { 
-        success: false, 
-        error: error.message,
-        message: 'Gagal menghapus kas'
-      };
-    }
+    if (error) throw error;
+    return { success: true };
+  }, 'Delete Kas');
 
+  if (result.success) {
     revalidatePath('/master/kas');
-    return { 
+    return {
       success: true,
-      message: 'Kas berhasil dihapus dan tercatat di log'
+      message: 'Kas berhasil dihapus dan tercatat di log',
+      isOffline: result.isRetry,
+      queued: result.isRetry
     };
-  } catch (error: any) {
-    console.error('Unexpected error in deleteKas:', error);
+  } else {
+    console.error('Error deleting kas:', result.error);
     return {
       success: false,
-      error: error.message || 'Unknown error',
-      message: 'Terjadi kesalahan saat menghapus kas'
+      error: result.error,
+      message: 'Gagal menghapus kas',
+      isOffline: true,
+      queued: true
     };
   }
 }

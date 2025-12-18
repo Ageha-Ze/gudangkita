@@ -2,6 +2,7 @@
 
 import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import { revalidatePath } from 'next/cache';
+import { databaseOperationWithRetry } from '@/lib/apiRetry';
 
 // Define return types for consistency
 type ActionResult = {
@@ -10,6 +11,8 @@ type ActionResult = {
   error?: string;
   warning?: string;
   data?: any;
+  isOffline?: boolean;
+  queued?: boolean;
 };
 
 export async function getPegawai(): Promise<ActionResult> {
@@ -120,36 +123,36 @@ export async function getUserList(): Promise<ActionResult> {
 }
 
 export async function addPegawai(formData: any): Promise<ActionResult> {
-  try {
+  const result = await databaseOperationWithRetry(async () => {
     const supabase = await supabaseAuthenticated();
-    
+
     const { data, error } = await supabase
       .from('pegawai')
       .insert([formData])
       .select()
       .single();
 
-    if (error) {
-      console.error('Error adding pegawai:', error);
-      return { 
-        success: false, 
-        error: error.message,
-        message: 'Gagal menambahkan pegawai'
-      };
-    }
+    if (error) throw error;
+    return data;
+  }, 'Add Pegawai');
 
+  if (result.success) {
     revalidatePath('/master/pegawai');
-    return { 
+    return {
       success: true,
-      data,
-      message: 'Pegawai berhasil ditambahkan'
+      data: result.data,
+      message: 'Pegawai berhasil ditambahkan',
+      isOffline: result.isRetry,
+      queued: result.isRetry
     };
-  } catch (error: any) {
-    console.error('Unexpected error in addPegawai:', error);
+  } else {
+    console.error('Error adding pegawai:', result.error);
     return {
       success: false,
-      error: error.message || 'Unknown error',
-      message: 'Terjadi kesalahan saat menambahkan pegawai'
+      error: result.error,
+      message: 'Gagal menambahkan pegawai',
+      isOffline: true,
+      queued: true
     };
   }
 }

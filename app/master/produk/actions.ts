@@ -2,12 +2,15 @@
 
 import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import { revalidatePath } from 'next/cache';
+import { databaseOperationWithRetry } from '@/lib/apiRetry';
 
 type ActionResult = {
   success: boolean;
   message?: string;
   error?: string;
   data?: any;
+  isOffline?: boolean;
+  queued?: boolean;
 };
 
 export async function getProduk(): Promise<ActionResult> {
@@ -53,12 +56,12 @@ export async function addProduk(formData: {
   density_kg_per_liter?: number; // 🆕
   allow_manual_conversion?: boolean; // 🆕
 }): Promise<ActionResult> {
-  try {
+  const result = await databaseOperationWithRetry(async () => {
     const supabase = await supabaseAuthenticated();
-    
+
     // Jika kode_produk tidak diisi, generate otomatis
     let kodeProduk = formData.kode_produk;
-    
+
     if (!kodeProduk) {
       // Generate dari nama produk
       const prefix = formData.nama_produk
@@ -67,11 +70,11 @@ export async function addProduk(formData: {
         .join('')
         .substring(0, 3)
         .padEnd(3, 'X');
-      
+
       const timestamp = Date.now().toString().slice(-4);
       kodeProduk = `${prefix}${timestamp}`;
     }
-    
+
     const { data, error } = await supabase
       .from('produk')
       .insert([{
@@ -88,27 +91,27 @@ export async function addProduk(formData: {
       .select()
       .single();
 
-    if (error) {
-      console.error('Error adding produk:', error);
-      return { 
-        success: false, 
-        error: error.message,
-        message: 'Gagal menambahkan produk'
-      };
-    }
+    if (error) throw error;
+    return data;
+  }, 'Create Produk');
 
+  if (result.success) {
     revalidatePath('/master/produk');
-    return { 
-      success: true, 
-      data,
-      message: 'Produk berhasil ditambahkan'
+    return {
+      success: true,
+      data: result.data,
+      message: 'Produk berhasil ditambahkan',
+      isOffline: result.isRetry,
+      queued: result.isRetry
     };
-  } catch (error: any) {
-    console.error('Exception in addProduk:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Unknown error',
-      message: 'Terjadi kesalahan saat menambahkan produk'
+  } else {
+    console.error('Error adding produk:', result.error);
+    return {
+      success: false,
+      error: result.error,
+      message: 'Gagal menambahkan produk',
+      isOffline: true,
+      queued: true
     };
   }
 }
@@ -124,9 +127,9 @@ export async function updateProduk(id: number, formData: {
   density_kg_per_liter?: number; // 🆕
   allow_manual_conversion?: boolean; // 🆕
 }): Promise<ActionResult> {
-  try {
+  const result = await databaseOperationWithRetry(async () => {
     const supabase = await supabaseAuthenticated();
-    
+
     const { data, error } = await supabase
       .from('produk')
       .update({
@@ -143,35 +146,35 @@ export async function updateProduk(id: number, formData: {
       .select()
       .single();
 
-    if (error) {
-      console.error('Error updating produk:', error);
-      return { 
-        success: false, 
-        error: error.message,
-        message: 'Gagal mengupdate produk'
-      };
-    }
+    if (error) throw error;
+    return data;
+  }, 'Update Produk');
 
+  if (result.success) {
     revalidatePath('/master/produk');
-    return { 
-      success: true, 
-      data,
-      message: 'Produk berhasil diupdate'
+    return {
+      success: true,
+      data: result.data,
+      message: 'Produk berhasil diupdate',
+      isOffline: result.isRetry,
+      queued: result.isRetry
     };
-  } catch (error: any) {
-    console.error('Exception in updateProduk:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Unknown error',
-      message: 'Terjadi kesalahan saat mengupdate produk'
+  } else {
+    console.error('Error updating produk:', result.error);
+    return {
+      success: false,
+      error: result.error,
+      message: 'Gagal mengupdate produk',
+      isOffline: true,
+      queued: true
     };
   }
 }
 
 export async function deleteProduk(id: number): Promise<ActionResult> {
-  try {
+  const result = await databaseOperationWithRetry(async () => {
     const supabase = await supabaseAuthenticated();
-    
+
     // Cek apakah produk digunakan di transaksi
     const { data: detailPembelian } = await supabase
       .from('detail_pembelian')
@@ -186,17 +189,11 @@ export async function deleteProduk(id: number): Promise<ActionResult> {
       .limit(1);
 
     if (detailPembelian && detailPembelian.length > 0) {
-      return { 
-        success: false, 
-        error: 'Produk tidak dapat dihapus karena sudah digunakan dalam transaksi pembelian' 
-      };
+      throw new Error('Produk tidak dapat dihapus karena sudah digunakan dalam transaksi pembelian');
     }
 
     if (detailPenjualan && detailPenjualan.length > 0) {
-      return { 
-        success: false, 
-        error: 'Produk tidak dapat dihapus karena sudah digunakan dalam transaksi penjualan' 
-      };
+      throw new Error('Produk tidak dapat dihapus karena sudah digunakan dalam transaksi penjualan');
     }
 
     const { error } = await supabase
@@ -204,26 +201,26 @@ export async function deleteProduk(id: number): Promise<ActionResult> {
       .delete()
       .eq('id', id);
 
-    if (error) {
-      console.error('Error deleting produk:', error);
-      return { 
-        success: false, 
-        error: error.message,
-        message: 'Gagal menghapus produk'
-      };
-    }
+    if (error) throw error;
+    return { success: true };
+  }, 'Delete Produk');
 
+  if (result.success) {
     revalidatePath('/master/produk');
-    return { 
+    return {
       success: true,
-      message: 'Produk berhasil dihapus'
+      message: 'Produk berhasil dihapus',
+      isOffline: result.isRetry,
+      queued: result.isRetry
     };
-  } catch (error: any) {
-    console.error('Exception in deleteProduk:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Unknown error',
-      message: 'Terjadi kesalahan saat menghapus produk'
+  } else {
+    console.error('Error deleting produk:', result.error);
+    return {
+      success: false,
+      error: result.error,
+      message: 'Gagal menghapus produk',
+      isOffline: true,
+      queued: true
     };
   }
 }

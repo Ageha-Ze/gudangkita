@@ -143,12 +143,25 @@ export default function PegawaiModal({ isOpen, onClose, pegawai, onSuccess }: Pe
       if (result.success) {
         onSuccess();
         onClose();
-        // Optional: You can show a success toast here instead of alert
-        if (result.message) {
-          alert(result.message);
+
+        let message = result.message || 'Operasi berhasil';
+        if (result.isOffline) {
+          message += ' (akan disimpan saat koneksi kembali)';
+        } else if (result.queued) {
+          message += ' (dalam antrian)';
         }
+
+        alert(message);
       } else {
-        setError(result.error || result.message || 'Terjadi kesalahan');
+        let errorMessage = result.error || result.message || 'Terjadi kesalahan';
+
+        if (result.isOffline) {
+          errorMessage += ' - Operasi akan dicoba otomatis saat koneksi kembali';
+        } else if (result.queued) {
+          errorMessage += ' - Operasi telah dimasukkan ke antrian offline';
+        }
+
+        setError(errorMessage);
       }
     } catch (err: any) {
       console.error('Error submitting form:', err);

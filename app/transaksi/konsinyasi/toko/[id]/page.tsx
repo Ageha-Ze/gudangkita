@@ -114,7 +114,10 @@ export default function EditTokoPage() {
     return (
       <div className="p-6 bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
         <div className="flex justify-center items-center h-64">
-          <div className="text-xl text-gray-600">Loading...</div>
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-indigo-600 mx-auto mb-4"></div>
+            <p className="text-gray-600 font-medium">Memuat data...</p>
+          </div>
         </div>
       </div>
     );

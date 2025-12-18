@@ -2,12 +2,15 @@
 
 import { supabaseAuthenticated } from '@/lib/supabaseServer';
 import { revalidatePath } from 'next/cache';
+import { databaseOperationWithRetry } from '@/lib/apiRetry';
 
 type ActionResult = {
   success: boolean;
   message?: string;
   error?: string;
   data?: any;
+  isOffline?: boolean;
+  queued?: boolean;
 };
 
 export async function getSuplier(): Promise<any[]> {
@@ -70,16 +73,12 @@ export async function addSuplier(formData: {
   daerah_operasi: string;
   tanggal_order_terakhir: string;
 }): Promise<ActionResult> {
-  try {
+  const result = await databaseOperationWithRetry(async () => {
     const supabase = await supabaseAuthenticated();
-    
+
     // Validasi input
     if (!formData.nama || !formData.cabang_id) {
-      return {
-        success: false,
-        error: 'Nama suplier dan cabang harus diisi',
-        message: 'Data tidak lengkap'
-      };
+      throw new Error('Nama suplier dan cabang harus diisi');
     }
 
     const { data, error } = await supabase
@@ -88,27 +87,27 @@ export async function addSuplier(formData: {
       .select()
       .single();
 
-    if (error) {
-      console.error('Error adding suplier:', error);
-      return { 
-        success: false, 
-        error: error.message,
-        message: 'Gagal menambahkan suplier'
-      };
-    }
+    if (error) throw error;
+    return data;
+  }, 'Create Supplier');
 
+  if (result.success) {
     revalidatePath('/master/suplier');
-    return { 
+    return {
       success: true,
-      data,
-      message: 'Suplier berhasil ditambahkan'
+      data: result.data,
+      message: 'Suplier berhasil ditambahkan',
+      isOffline: result.isRetry,
+      queued: result.isRetry
     };
-  } catch (error: any) {
-    console.error('Exception in addSuplier:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Unknown error',
-      message: 'Terjadi kesalahan saat menambahkan suplier'
+  } else {
+    console.error('Error adding suplier:', result.error);
+    return {
+      success: false,
+      error: result.error,
+      message: 'Gagal menambahkan suplier',
+      isOffline: true,
+      queued: true
     };
   }
 }
@@ -128,16 +127,12 @@ export async function updateSuplier(
     tanggal_order_terakhir: string;
   }
 ): Promise<ActionResult> {
-  try {
+  const result = await databaseOperationWithRetry(async () => {
     const supabase = await supabaseAuthenticated();
-    
+
     // Validasi input
     if (!formData.nama || !formData.cabang_id) {
-      return {
-        success: false,
-        error: 'Nama suplier dan cabang harus diisi',
-        message: 'Data tidak lengkap'
-      };
+      throw new Error('Nama suplier dan cabang harus diisi');
     }
 
     const { data, error } = await supabase
@@ -147,35 +142,35 @@ export async function updateSuplier(
       .select()
       .single();
 
-    if (error) {
-      console.error('Error updating suplier:', error);
-      return { 
-        success: false, 
-        error: error.message,
-        message: 'Gagal mengupdate suplier'
-      };
-    }
+    if (error) throw error;
+    return data;
+  }, 'Update Supplier');
 
+  if (result.success) {
     revalidatePath('/master/suplier');
-    return { 
+    return {
       success: true,
-      data,
-      message: 'Suplier berhasil diupdate'
+      data: result.data,
+      message: 'Suplier berhasil diupdate',
+      isOffline: result.isRetry,
+      queued: result.isRetry
     };
-  } catch (error: any) {
-    console.error('Exception in updateSuplier:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Unknown error',
-      message: 'Terjadi kesalahan saat mengupdate suplier'
+  } else {
+    console.error('Error updating suplier:', result.error);
+    return {
+      success: false,
+      error: result.error,
+      message: 'Gagal mengupdate suplier',
+      isOffline: true,
+      queued: true
     };
   }
 }
 
 export async function deleteSuplier(id: number): Promise<ActionResult> {
-  try {
+  const result = await databaseOperationWithRetry(async () => {
     const supabase = await supabaseAuthenticated();
-    
+
     // Cek apakah suplier digunakan di transaksi pembelian
     const { data: pembelianData } = await supabase
       .from('pembelian')
@@ -184,11 +179,7 @@ export async function deleteSuplier(id: number): Promise<ActionResult> {
       .limit(1);
 
     if (pembelianData && pembelianData.length > 0) {
-      return { 
-        success: false, 
-        error: 'Suplier tidak dapat dihapus karena sudah digunakan dalam transaksi pembelian',
-        message: 'Tidak dapat menghapus suplier'
-      };
+      throw new Error('Suplier tidak dapat dihapus karena sudah digunakan dalam transaksi pembelian');
     }
 
     const { error } = await supabase
@@ -196,26 +187,26 @@ export async function deleteSuplier(id: number): Promise<ActionResult> {
       .delete()
       .eq('id', id);
 
-    if (error) {
-      console.error('Error deleting suplier:', error);
-      return { 
-        success: false, 
-        error: error.message,
-        message: 'Gagal menghapus suplier'
-      };
-    }
+    if (error) throw error;
+    return { success: true };
+  }, 'Delete Supplier');
 
+  if (result.success) {
     revalidatePath('/master/suplier');
-    return { 
+    return {
       success: true,
-      message: 'Suplier berhasil dihapus'
+      message: 'Suplier berhasil dihapus',
+      isOffline: result.isRetry,
+      queued: result.isRetry
     };
-  } catch (error: any) {
-    console.error('Exception in deleteSuplier:', error);
-    return { 
-      success: false, 
-      error: error.message || 'Unknown error',
-      message: 'Terjadi kesalahan saat menghapus suplier'
+  } else {
+    console.error('Error deleting suplier:', result.error);
+    return {
+      success: false,
+      error: result.error,
+      message: 'Gagal menghapus suplier',
+      isOffline: true,
+      queued: true
     };
   }
 }

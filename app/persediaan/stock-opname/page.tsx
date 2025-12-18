@@ -223,19 +223,23 @@ export default function StockOpnamePage() {
       <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white p-6">
-          <div className="flex justify-between items-center">
-            <div>
-              <h3 className="text-2xl font-bold">Stock Opname</h3>
-              <p className="text-purple-100 mt-1">Penghitungan dan penyesuaian stock fisik</p>
-            </div>
-            <button
-              onClick={() => setShowModalTambah(true)}
-              className="bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-3 rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 flex items-center shadow-md hover:shadow-lg transform hover:scale-105"
-            >
-              <Plus size={20} className="mr-2" />
-              Tambah Opname
-            </button>
-          </div>
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+  <div>
+    <h3 className="text-2xl font-bold">Stock Opname</h3>
+    <p className="text-purple-100 mt-1">Penghitungan dan penyesuaian stock fisik</p>
+  </div>
+
+<div className="flex-shrink-0">
+    <button
+      onClick={() => setShowModalTambah(true)}
+      className="bg-gradient-to-r from-green-500 to-green-600 text-white px-3 sm:px-6 py-2 sm:py-3 rounded-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 flex items-center gap-2 text-sm sm:text-base whitespace-nowrap"
+    >
+      <Plus size={18} className="ml-1 sm:ml-0" />
+      <span className="hidden sm:inline">Tambah Opname</span>
+      <span className="sm:hidden">Tambah</span>
+    </button>
+  </div>
+</div>
         </div>
 
         {/* Content */}

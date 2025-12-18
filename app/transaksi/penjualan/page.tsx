@@ -233,28 +233,30 @@ export default function PenjualanListPage() {
       )}
 
       {/* Search & Add Button */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 mb-4 sm:mb-6 bg-white p-3 sm:p-4 rounded-lg shadow-md">
-        <div className="flex items-center gap-2 flex-1 sm:flex-none min-w-0">
-          <label className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap">Search:</label>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => handleSearch(e.target.value)}
-            className="flex-1 min-w-0 sm:max-w-xs px-3 sm:px-4 py-2 text-sm border border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="Cari..."
-          />
-        </div>
-        {canCreate && (
-          <button
-            onClick={() => setShowModalTambah(true)}
-            className="w-full sm:w-auto px-4 sm:px-6 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2 whitespace-nowrap"
-          >
-            <Plus size={18} />
-            Tambah
-          </button>
-        )}
-      </div>
-
+<div className="flex flex-col gap-3 mb-4 sm:mb-6 bg-white p-3 sm:p-4 rounded-lg shadow-md sm:flex-row sm:justify-between sm:items-center">
+  {/* Search Input */}
+  <div className="flex items-center gap-2 w-full sm:flex-1 sm:max-w-md">
+    <label className="text-xs sm:text-sm font-medium text-gray-700 shrink-0">Search:</label>
+    <input
+      type="text"
+      value={search}
+      onChange={(e) => handleSearch(e.target.value)}
+      className="flex-1 min-w-0 px-3 py-2 text-sm border border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+      placeholder="Cari..."
+    />
+  </div>
+  
+  {/* Add Button */}
+  {canCreate && (
+    <button
+      onClick={() => setShowModalTambah(true)}
+      className="w-full sm:w-auto px-4 sm:px-6 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2"
+    >
+      <Plus size={18} />
+      <span>Tambah</span>
+    </button>
+  )}
+</div>
       {/* Mobile Cards */}
       <div className="lg:hidden space-y-4">
         {loading ? (

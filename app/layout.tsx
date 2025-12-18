@@ -4,6 +4,7 @@ import "./globals.css";
 import UIWrapper from "@/components/UIWrapper";
 import { UserProvider } from "@/contexts/UserContext";
 import { ToasterConfig } from "@/lib/toast";
+import OfflineQueueIndicator from "@/components/OfflineQueueIndicator";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <UIWrapper>{children}</UIWrapper>
         </UserProvider>
         <ToasterConfig />
+        <OfflineQueueIndicator />
       </body>
     </html>
   );
