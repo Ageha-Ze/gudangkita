@@ -4,6 +4,141 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ClipboardCheck, Plus, Search, CheckCircle, XCircle, Clock, Eye, Trash2, X } from 'lucide-react';
 import ModalTambahOpname from './ModalTambahOpname'; // Import dari file lokal
+import DeleteModal from '@/components/DeleteModal';
+
+// Modal components for approve, reject operations
+function ApproveModal({ isOpen, onClose, onConfirm, itemName, itemValue }: {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: (notes: string) => void;
+  itemName: string;
+  itemValue: string;
+}) {
+  const [notes, setNotes] = useState('');
+
+  if (!isOpen) return null;
+
+  const handleConfirm = () => {
+    onConfirm(notes);
+    setNotes('');
+  };
+
+  const handleClose = () => {
+    setNotes('');
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-2xl p-6 w-full max-w-md">
+        <div className="w-16 h-16 bg-green-100 border-4 border-green-400 rounded-full flex items-center justify-center mx-auto mb-4">
+          <CheckCircle className="text-green-600 w-8 h-8" />
+        </div>
+        <h3 className="text-xl font-bold text-gray-800 mb-2 text-center">Setujui Stock Opname</h3>
+        <p className="text-gray-600 mb-4 text-center">
+          Anda yakin ingin menyetujui {itemName} "{itemValue}"?
+        </p>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Catatan Approval (Opsional)
+          </label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Tambahkan catatan jika diperlukan..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            rows={3}
+          />
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={handleClose}
+            className="flex-1 bg-gray-500 text-white py-2 rounded hover:bg-gray-600 transition"
+          >
+            Batal
+          </button>
+          <button
+            onClick={handleConfirm}
+            className="flex-1 bg-green-500 text-white py-2 rounded hover:bg-green-600 transition"
+          >
+            Setujui
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RejectModal({ isOpen, onClose, onConfirm, itemName, itemValue }: {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: (reason: string) => void;
+  itemName: string;
+  itemValue: string;
+}) {
+  const [reason, setReason] = useState('');
+
+  if (!isOpen) return null;
+
+  const handleConfirm = () => {
+    if (!reason.trim()) {
+      alert('Alasan penolakan harus diisi');
+      return;
+    }
+    onConfirm(reason);
+    setReason('');
+  };
+
+  const handleClose = () => {
+    setReason('');
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-2xl p-6 w-full max-w-md">
+        <div className="w-16 h-16 bg-red-100 border-4 border-red-400 rounded-full flex items-center justify-center mx-auto mb-4">
+          <XCircle className="text-red-600 w-8 h-8" />
+        </div>
+        <h3 className="text-xl font-bold text-gray-800 mb-2 text-center">Tolak Stock Opname</h3>
+        <p className="text-gray-600 mb-4 text-center">
+          Anda yakin ingin menolak {itemName} "{itemValue}"?
+        </p>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Alasan Penolakan <span className="text-red-500">*</span>
+          </label>
+          <textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Jelaskan alasan penolakan..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+            rows={3}
+            required
+          />
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={handleClose}
+            className="flex-1 bg-gray-500 text-white py-2 rounded hover:bg-gray-600 transition"
+          >
+            Batal
+          </button>
+          <button
+            onClick={handleConfirm}
+            className="flex-1 bg-red-500 text-white py-2 rounded hover:bg-red-600 transition"
+          >
+            Tolak
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 interface StockOpname {
   id: number;
@@ -37,6 +172,13 @@ export default function StockOpnamePage() {
   const [showModalTambah, setShowModalTambah] = useState(false);
   const [selectedOpname, setSelectedOpname] = useState<StockOpname | null>(null);
 
+  // Modal states
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [currentOpnameId, setCurrentOpnameId] = useState<number | null>(null);
+  const [currentOpnameName, setCurrentOpnameName] = useState<string>('');
+
   const fetchOpnames = useCallback(async () => {
     try {
       setLoading(true);
@@ -58,17 +200,34 @@ export default function StockOpnamePage() {
     fetchOpnames();
   }, [fetchOpnames]);
 
-  const handleApprove = async (id: number) => {
-    const keterangan = prompt('Keterangan approval (opsional):');
-    if (keterangan === null) return; // User clicked cancel
+  const handleApprove = (id: number, produkName: string) => {
+    setCurrentOpnameId(id);
+    setCurrentOpnameName(produkName);
+    setShowApproveModal(true);
+  };
+
+  const handleReject = (id: number, produkName: string) => {
+    setCurrentOpnameId(id);
+    setCurrentOpnameName(produkName);
+    setShowRejectModal(true);
+  };
+
+  const handleDelete = (id: number, produkName: string) => {
+    setCurrentOpnameId(id);
+    setCurrentOpnameName(produkName);
+    setShowDeleteModal(true);
+  };
+
+  const executeApprove = async (notes: string) => {
+    if (!currentOpnameId) return;
 
     try {
-      const res = await fetch(`/api/persediaan/stock-opname/${id}`, {
+      const res = await fetch(`/api/persediaan/stock-opname/${currentOpnameId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status: 'approved',
-          keterangan: keterangan || 'Approved',
+          keterangan: notes || 'Approved',
         }),
       });
 
@@ -77,6 +236,7 @@ export default function StockOpnamePage() {
       if (res.ok) {
         alert(json.message || 'Stock opname berhasil disetujui');
         fetchOpnames();
+        setShowApproveModal(false);
       } else {
         alert(json.error || 'Gagal approve');
       }
@@ -86,20 +246,16 @@ export default function StockOpnamePage() {
     }
   };
 
-  const handleReject = async (id: number) => {
-    const alasan = prompt('Alasan penolakan:');
-    if (!alasan) {
-      alert('Alasan penolakan harus diisi');
-      return;
-    }
+  const executeReject = async (reason: string) => {
+    if (!currentOpnameId) return;
 
     try {
-      const res = await fetch(`/api/persediaan/stock-opname/${id}`, {
+      const res = await fetch(`/api/persediaan/stock-opname/${currentOpnameId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           status: 'rejected',
-          keterangan: alasan,
+          keterangan: reason,
         }),
       });
 
@@ -108,6 +264,7 @@ export default function StockOpnamePage() {
       if (res.ok) {
         alert(json.message || 'Stock opname ditolak');
         fetchOpnames();
+        setShowRejectModal(false);
       } else {
         alert(json.error || 'Gagal reject');
       }
@@ -117,11 +274,11 @@ export default function StockOpnamePage() {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus data ini?')) return;
+  const executeDelete = async () => {
+    if (!currentOpnameId) return;
 
     try {
-      const res = await fetch(`/api/persediaan/stock-opname/${id}`, {
+      const res = await fetch(`/api/persediaan/stock-opname/${currentOpnameId}`, {
         method: 'DELETE',
       });
 
@@ -130,6 +287,7 @@ export default function StockOpnamePage() {
       if (res.ok) {
         alert(json.message || 'Data berhasil dihapus');
         fetchOpnames();
+        setShowDeleteModal(false);
       } else {
         alert(json.error || 'Gagal menghapus data');
       }
@@ -378,21 +536,21 @@ export default function StockOpnamePage() {
                           {item.status === 'pending' && (
                             <>
                               <button
-                                onClick={() => handleApprove(item.id)}
+                                onClick={() => handleApprove(item.id, item.produk.nama_produk)}
                                 className="bg-green-500 text-white p-2 rounded-lg hover:bg-green-600 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-110"
                                 title="Approve"
                               >
                                 <CheckCircle size={18} />
                               </button>
                               <button
-                                onClick={() => handleReject(item.id)}
+                                onClick={() => handleReject(item.id, item.produk.nama_produk)}
                                 className="bg-red-500 text-white p-2 rounded-lg hover:bg-red-600 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-110"
                                 title="Reject"
                               >
                                 <XCircle size={18} />
                               </button>
                               <button
-                                onClick={() => handleDelete(item.id)}
+                                onClick={() => handleDelete(item.id, item.produk.nama_produk)}
                                 className="bg-gray-500 text-white p-2 rounded-lg hover:bg-gray-600 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-110"
                                 title="Delete"
                               >
@@ -401,13 +559,22 @@ export default function StockOpnamePage() {
                             </>
                           )}
                           {item.status !== 'pending' && (
-                            <button
-                              onClick={() => setSelectedOpname(item)}
-                              className="bg-blue-500 text-white p-2 rounded-lg hover:bg-blue-600 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-110"
-                              title="Lihat Detail"
-                            >
-                              <Eye size={18} />
-                            </button>
+                            <>
+                              <button
+                                onClick={() => setSelectedOpname(item)}
+                                className="bg-blue-500 text-white p-2 rounded-lg hover:bg-blue-600 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-110"
+                                title="Lihat Detail"
+                              >
+                                <Eye size={18} />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(item.id, item.produk.nama_produk)}
+                                className="bg-red-600 text-white p-2 rounded-lg hover:bg-red-700 transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-110"
+                                title="Hapus & Reverse Stock"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </>
                           )}
                         </div>
                       </td>
@@ -448,6 +615,33 @@ export default function StockOpnamePage() {
         isOpen={showModalTambah}
         onClose={() => setShowModalTambah(false)}
         onSuccess={fetchOpnames}
+      />
+
+      {/* Approve Modal */}
+      <ApproveModal
+        isOpen={showApproveModal}
+        onClose={() => setShowApproveModal(false)}
+        onConfirm={executeApprove}
+        itemName="Stock Opname"
+        itemValue={currentOpnameName}
+      />
+
+      {/* Reject Modal */}
+      <RejectModal
+        isOpen={showRejectModal}
+        onClose={() => setShowRejectModal(false)}
+        onConfirm={executeReject}
+        itemName="Stock Opname"
+        itemValue={currentOpnameName}
+      />
+
+      {/* Delete Modal */}
+      <DeleteModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={executeDelete}
+        itemName="Stock Opname"
+        itemValue={currentOpnameName}
       />
 
       {/* Detail Modal (simple) */}

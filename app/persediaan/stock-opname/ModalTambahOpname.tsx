@@ -28,6 +28,9 @@ export default function ModalTambahOpname({ isOpen, onClose, onSuccess }: Props)
   const [cabangs, setCabangs] = useState<Cabang[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedProduk, setSelectedProduk] = useState<Produk | null>(null);
+  const [branchStock, setBranchStock] = useState<number>(0);
+  const [branchSatuan, setBranchSatuan] = useState<string>('Kg');
+  const [loadingStock, setLoadingStock] = useState(false);
   
   const [formData, setFormData] = useState({
     produk_id: '',
@@ -54,13 +57,63 @@ export default function ModalTambahOpname({ isOpen, onClose, onSuccess }: Props)
     }
   }, [formData.produk_id, produks]);
 
+  // Fetch branch-specific stock when both produk and cabang are selected
+  useEffect(() => {
+    const fetchBranchStock = async () => {
+      if (formData.produk_id && formData.cabang_id) {
+        setLoadingStock(true);
+        try {
+          const result = await fetchStockForProduct(
+            parseInt(formData.produk_id),
+            parseInt(formData.cabang_id)
+          );
+          setBranchStock(result.stock);
+          setBranchSatuan(result.satuan);
+        } catch (error) {
+          console.error('Error fetching branch stock:', error);
+          setBranchStock(0);
+          setBranchSatuan('Kg');
+        } finally {
+          setLoadingStock(false);
+        }
+      } else {
+        setBranchStock(0);
+        setBranchSatuan('Kg');
+      }
+    };
+
+    fetchBranchStock();
+  }, [formData.produk_id, formData.cabang_id]);
+
   const fetchProduks = async () => {
     try {
+      // Get all products first
       const res = await fetch('/api/master/produk');
       const json = await res.json();
       setProduks(json.data || []);
     } catch (error) {
       console.error('Error fetching produks:', error);
+    }
+  };
+
+  // Fetch stock for specific product and branch
+  const fetchStockForProduct = async (produkId: number, cabangId: number) => {
+    try {
+      const res = await fetch(`/api/persediaan/stock-barang?mode=aggregated&cabang_id=${cabangId}&limit=1000`);
+      const json = await res.json();
+
+      if (json.success && json.data) {
+        // Find the specific product stock
+        const productStock = json.data.find((item: any) => item.produk_id === produkId);
+        return {
+          stock: productStock?.total_stock || 0,
+          satuan: productStock?.satuan || 'Kg'
+        };
+      }
+      return { stock: 0, satuan: 'Kg' };
+    } catch (error) {
+      console.error('Error fetching stock for product:', error);
+      return { stock: 0, satuan: 'Kg' };
     }
   };
 
@@ -76,7 +129,7 @@ export default function ModalTambahOpname({ isOpen, onClose, onSuccess }: Props)
 
   const calculateSelisih = () => {
     if (!selectedProduk) return 0;
-    return formData.jumlah_fisik - parseFloat(selectedProduk.stok.toString());
+    return formData.jumlah_fisik - branchStock;
   };
 
   const selisih = calculateSelisih();
@@ -179,15 +232,20 @@ export default function ModalTambahOpname({ isOpen, onClose, onSuccess }: Props)
             </div>
 
             {/* Stock Sistem (Read-only) */}
-            {selectedProduk && (
+            {selectedProduk && formData.cabang_id && (
               <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                <label className="block mb-2 font-medium text-blue-900">Stock di Sistem</label>
+                <label className="block mb-2 font-medium text-blue-900">
+                  Stock di Sistem {loadingStock && '(Memuat...)'}
+                </label>
                 <input
                   type="text"
-                  value={`${parseFloat(selectedProduk.stok.toString()).toFixed(2)} Kg`}
+                  value={`${branchStock.toFixed(2)} ${branchSatuan}`}
                   readOnly
                   className="w-full px-3 py-2 border rounded bg-white font-bold text-lg"
                 />
+                <p className="text-xs text-blue-700 mt-1">
+                  Stock untuk gudang yang dipilih
+                </p>
               </div>
             )}
 
@@ -229,18 +287,18 @@ export default function ModalTambahOpname({ isOpen, onClose, onSuccess }: Props)
                     <div className="grid grid-cols-3 gap-4 text-sm">
                       <div>
                         <p className="text-gray-600">Stock Sistem</p>
-                        <p className="font-bold">{parseFloat(selectedProduk.stok.toString()).toFixed(2)} Kg</p>
+                        <p className="font-bold">{branchStock.toFixed(2)} {branchSatuan}</p>
                       </div>
                       <div>
                         <p className="text-gray-600">Stock Fisik</p>
-                        <p className="font-bold">{formData.jumlah_fisik.toFixed(2)} Kg</p>
+                        <p className="font-bold">{formData.jumlah_fisik.toFixed(2)} {branchSatuan}</p>
                       </div>
                       <div>
                         <p className="text-gray-600">Selisih</p>
                         <p className={`font-bold text-lg ${
                           selisih === 0 ? 'text-green-600' : selisih > 0 ? 'text-yellow-600' : 'text-red-600'
                         }`}>
-                          {selisih > 0 ? '+' : ''}{selisih.toFixed(2)} Kg
+                          {selisih > 0 ? '+' : ''}{selisih.toFixed(2)} {branchSatuan}
                         </p>
                       </div>
                     </div>

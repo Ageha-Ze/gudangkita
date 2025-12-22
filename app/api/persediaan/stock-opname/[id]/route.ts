@@ -190,7 +190,7 @@ export async function PUT(
   }
 }
 
-// DELETE - Delete stock opname
+// DELETE - Delete stock opname and reverse stock adjustments
 export async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
@@ -216,15 +216,53 @@ export async function DELETE(
       );
     }
 
-    // Only allow delete if status is pending
-    if (opname.status !== 'pending') {
-      return NextResponse.json(
-        { error: 'Hanya stock opname dengan status pending yang bisa dihapus' },
-        { status: 400 }
-      );
+    // If approved, reverse the stock adjustments
+    if (opname.status === 'approved' && Math.abs(opname.selisih) > 0.001) {
+      console.log('🔄 Reversing stock adjustments for approved opname...');
+
+      // 1. Delete the adjustment record from stock_barang
+      const { error: deleteStockError } = await supabase
+        .from('stock_barang')
+        .delete()
+        .eq('produk_id', opname.produk_id)
+        .eq('cabang_id', opname.cabang_id)
+        .ilike('keterangan', `%Stock Opname Adjustment - ${id}%`);
+
+      if (deleteStockError) {
+        console.error('❌ Error deleting stock adjustment:', deleteStockError);
+        throw deleteStockError;
+      }
+
+      console.log('✅ Stock adjustment record deleted');
+
+      // 2. Reverse the stock change in produk table
+      const { data: currentProduk, error: getProdukError } = await supabase
+        .from('produk')
+        .select('stok, nama_produk')
+        .eq('id', opname.produk_id)
+        .single();
+
+      if (getProdukError) throw getProdukError;
+
+      const currentStock = parseFloat(currentProduk.stok?.toString() || '0');
+      const reversedStock = currentStock - parseFloat(opname.selisih.toString()); // Reverse the adjustment
+
+      console.log(`🔄 Stock reversal: ${currentStock} - (${opname.selisih}) = ${reversedStock}`);
+
+      const { error: produkError } = await supabase
+        .from('produk')
+        .update({ stok: reversedStock })
+        .eq('id', opname.produk_id);
+
+      if (produkError) {
+        console.error('❌ Error reversing produk stock:', produkError);
+        throw produkError;
+      }
+
+      console.log('✅ Produk stock reversed to:', reversedStock);
     }
 
-    // Delete the record
+    // Delete the stock opname record
     const { error: deleteError } = await supabase
       .from('stock_opname')
       .delete()
@@ -236,7 +274,9 @@ export async function DELETE(
 
     return NextResponse.json({
       success: true,
-      message: 'Stock opname berhasil dihapus',
+      message: opname.status === 'approved'
+        ? 'Stock opname berhasil dihapus dan penyesuaian stock telah dibatalkan'
+        : 'Stock opname berhasil dihapus',
     });
 
   } catch (error: any) {

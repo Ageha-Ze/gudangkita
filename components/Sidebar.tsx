@@ -298,8 +298,8 @@ const filteredMenuItems = getFilteredMenuItems();
         // Gudang/Produksi: Pending stock opname
         mappedCounts['gudang-produksi'] = counts['opname'] || 0;
 
-        // Persediaan: Low stock alerts
-        mappedCounts['persediaan'] = counts['stock'] || 0;
+        // Persediaan: Low stock alerts + pending stock opname
+        mappedCounts['persediaan'] = (counts['stock'] || 0) + (counts['opname'] || 0);
 
         // Keuangan/Hutang: Upcoming debt payments
         mappedCounts['keuangan-hutang'] = counts['hutang'] || 0;
@@ -673,7 +673,7 @@ const filteredMenuItems = getFilteredMenuItems();
 
               {showNotifications && (
                 <div className="mt-2 max-h-64 overflow-y-auto space-y-2">
-                  {notifications.slice(0, 5).map((notification) => (
+                  {notifications.map((notification) => (
                     <div
                       key={notification.id}
                       className={`p-3 rounded-lg border transition-all duration-200 ${

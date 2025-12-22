@@ -360,12 +360,12 @@ export default function DashboardPage() {
           </div>
 
           {/* Financial Summary */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 mb-4 sm:mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6">
             <SummaryCard
               title="Laba Kotor"
               value={formatCurrency(labaKotor)}
               subtitle="Pendapatan - HPP"
-              icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
+              icon={<DollarSign className="w-4 h-4 sm:w-4 sm:h-4" />}
               color={labaKotor >= 0 ? "emerald" : "rose"}
               isNegative={labaKotor < 0}
             />
@@ -492,12 +492,12 @@ function MetricDetailCard({ title, value, description, status, detail }: {
   }[status];
 
   return (
-    <div className={`${statusConfig.bg} rounded-xl p-6 border ${statusConfig.border}`}>
+    <div className={`${statusConfig.bg} rounded-xl p-4 sm:p-6 border ${statusConfig.border}`}>
       <div className="flex items-center justify-between mb-3">
         <h4 className="text-sm font-bold text-gray-900">{title}</h4>
         <span className={`text-lg`}>{statusConfig.icon}</span>
       </div>
-      <p className="text-3xl font-bold text-gray-900 mb-2">{value}</p>
+      <p className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">{value}</p>
       <p className="text-xs text-gray-600 mb-3">{description}</p>
       <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${statusConfig.badge}`}>
         {detail}
