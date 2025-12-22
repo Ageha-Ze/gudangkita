@@ -10,99 +10,103 @@ export async function GET(
   try {
     const supabase = await supabaseAuthenticated();
     const { id } = await params;
-    const hutangId = parseInt(id);
+    const pembelianId = parseInt(id);
 
-    if (isNaN(hutangId)) {
+    if (isNaN(pembelianId)) {
       return NextResponse.json(
-        { error: 'Invalid hutang ID' },
+        { error: 'Invalid pembelian ID' },
         { status: 400 }
       );
     }
 
-    // Get hutang data with related information
-    const { data: hutangData, error: hutangError } = await supabase
-      .from('hutang_pembelian')
+    // Get pembelian data with jenis_pembayaran = 'hutang'
+    const { data: pembelianData, error: pembelianError } = await supabase
+      .from('transaksi_pembelian')
       .select(`
         id,
-        pembelian_id,
-        total_hutang,
-        dibayar,
-        sisa,
-        status,
+        tanggal,
+        total,
+        uang_muka,
+        biaya_kirim,
+        jenis_pembayaran,
         jatuh_tempo,
+        status_pembayaran,
         suplier:suplier_id (
           id,
           nama
+        ),
+        cabang:cabang_id (
+          id,
+          nama_cabang,
+          kode_cabang
+        ),
+        detail_pembelian (
+          id,
+          subtotal
         )
       `)
-      .eq('id', hutangId)
+      .eq('id', pembelianId)
+      .eq('jenis_pembayaran', 'hutang')
       .single();
 
-    if (hutangError) {
-      console.error('Error fetching hutang:', hutangError);
+    if (pembelianError) {
+      console.error('Error fetching pembelian hutang:', pembelianError);
       return NextResponse.json(
         { error: 'Hutang not found' },
         { status: 404 }
       );
     }
 
-    // Get cabang information and jatuh_tempo from transaksi_pembelian
-    const { data: transaksiData, error: transaksiError } = await supabase
-      .from('transaksi_pembelian')
-      .select(`
-        id,
-        tanggal,
-        jatuh_tempo,
-        cabang:cabang_id (
-          id,
-          nama_cabang,
-          kode_cabang
-        )
-      `)
-      .eq('id', (hutangData as any).pembelian_id)
-      .single();
-
-    if (transaksiError) {
-      console.error('Error fetching transaksi:', transaksiError);
-    }
-
-    // Get payment history (cicilan_pembelian)
-    const { data: pembayaranData, error: pembayaranError } = await supabase
+    // Calculate real payments from cicilan_pembelian
+    const { data: cicilanData, error: cicilanError } = await supabase
       .from('cicilan_pembelian')
       .select('id, tanggal_cicilan, jumlah_cicilan, keterangan, kas_id')
-      .eq('pembelian_id', (hutangData as any).pembelian_id)
+      .eq('pembelian_id', pembelianId)
       .order('tanggal_cicilan', { ascending: false });
 
-    if (pembayaranError) {
-      console.error('Error fetching pembayaran:', pembayaranError);
+    if (cicilanError) {
+      console.error('Error fetching cicilan:', cicilanError);
+    }
+
+    // Calculate real totals
+    const realTotal = parseFloat(pembelianData.total?.toString() || '0');
+    const dibayar = (cicilanData || []).reduce((sum, c) =>
+      sum + parseFloat(c.jumlah_cicilan?.toString() || '0'), 0
+    );
+    const sisa = realTotal - dibayar;
+
+    // Determine status
+    let status = 'belum_lunas';
+    if (sisa <= 0) {
+      status = 'lunas';
     }
 
     // Transform payment data to match the expected format
-    const pembayaranFormatted = (pembayaranData || []).map(p => ({
-      id: p.id,
-      tanggal: p.tanggal_cicilan ? new Date(p.tanggal_cicilan).toISOString().split('T')[0] : '',
-      jumlah: parseFloat(p.jumlah_cicilan?.toString() || '0'),
-      keterangan: p.keterangan || '',
-      kas: `Kas ${p.kas_id}` // Simplified kas reference
+    const pembayaranFormatted = (cicilanData || []).map(c => ({
+      id: c.id,
+      tanggal: c.tanggal_cicilan ? new Date(c.tanggal_cicilan).toISOString().split('T')[0] : '',
+      jumlah: parseFloat(c.jumlah_cicilan?.toString() || '0'),
+      keterangan: c.keterangan || '',
+      kas: `Kas ${c.kas_id}` // Simplified kas reference
     }));
 
-    // Merge jatuh_tempo: use transaction table jatuh_tempo, fallback to hutang table
-    const mergedHutangData = {
-      ...hutangData,
-      jatuh_tempo: transaksiData?.jatuh_tempo || hutangData.jatuh_tempo
-    };
-
-    // Return combined data
-    const result = {
-      ...mergedHutangData,
+    // Transform to hutang format
+    const hutangResult = {
+      id: pembelianData.id,
+      total_hutang: realTotal,
+      dibayar: dibayar,
+      sisa: sisa,
+      status: status,
+      jatuh_tempo: pembelianData.jatuh_tempo,
+      suplier: Array.isArray(pembelianData.suplier) ? pembelianData.suplier[0] : pembelianData.suplier,
       pembayaran: pembayaranFormatted,
-      transaksi_pembelian: transaksiData ? {
-        id: transaksiData.id,
-        cabang: transaksiData.cabang
-      } : null
+      transaksi_pembelian: {
+        id: pembelianData.id,
+        cabang: Array.isArray(pembelianData.cabang) ? pembelianData.cabang[0] : pembelianData.cabang
+      }
     };
 
-    return NextResponse.json(result, { status: 200 });
+    return NextResponse.json(hutangResult, { status: 200 });
 
   } catch (error: any) {
     console.error('Error in hutang detail API:', error);
@@ -140,9 +144,9 @@ export async function PUT(
       );
     }
 
-    // Update jatuh_tempo in hutang_pembelian table
+    // Update jatuh_tempo in transaksi_pembelian table
     const { data, error } = await supabase
-      .from('hutang_pembelian')
+      .from('transaksi_pembelian')
       .update({ jatuh_tempo })
       .eq('id', hutangId)
       .select()

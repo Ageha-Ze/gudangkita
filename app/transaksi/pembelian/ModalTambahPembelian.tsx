@@ -55,7 +55,7 @@ export default function ModalTambahPembelian({ isOpen, onClose, onSuccess, isTra
     tanggal: new Date().toISOString().split('T')[0],
     suplier_id: '',
     cabang_id: '',
-    jenis_pembayaran: 'cash',
+    jenis_pembayaran: 'tunai',
     show_biaya_kirim: false,
     biaya_kirim: '',
     show_uang_muka: false,
@@ -189,7 +189,7 @@ export default function ModalTambahPembelian({ isOpen, onClose, onSuccess, isTra
     tanggal: new Date().toISOString().split('T')[0],
     suplier_id: '',
     cabang_id: '',
-    jenis_pembayaran: 'cash',
+    jenis_pembayaran: 'tunai',
     show_biaya_kirim: false,
     biaya_kirim: '',
     show_uang_muka: false,
@@ -357,11 +357,11 @@ export default function ModalTambahPembelian({ isOpen, onClose, onSuccess, isTra
             <label className="font-medium">Jenis Pembayaran</label>
             <select
               value={formData.jenis_pembayaran}
-              onChange={(e) => setFormData({ ...formData, jenis_pembayaran: e.target.value as 'cash' | 'transfer' })}
+              onChange={(e) => setFormData({ ...formData, jenis_pembayaran: e.target.value as 'tunai' | 'hutang' })}
               className="col-span-2 px-3 py-2 border rounded"
             >
-              <option value="cash">Cash</option>
-              <option value="transfer">Transfer</option>
+              <option value="tunai">Tunai</option>
+              <option value="hutang">Hutang</option>
             </select>
           </div>
 

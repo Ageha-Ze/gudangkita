@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
           subtotal
         )
       `)
-      .neq('jenis_pembayaran', 'transfer')
+      .eq('jenis_pembayaran', 'hutang')
       .order('tanggal', { ascending: false });
 
     if (cabangId && cabangId !== 'all') {
@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
           subtotal
         )
       `)
-      .neq('jenis_pembayaran', 'tunai')
+      .eq('jenis_pembayaran', 'hutang')
       .in('status_pembayaran', ['Belum Lunas', 'Cicil']);
 
     if (cabangId && cabangId !== 'all') {

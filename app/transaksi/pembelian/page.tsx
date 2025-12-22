@@ -237,10 +237,10 @@ export default function PembelianPage() {
       )}
 
 {/* Search & Add Button */}
-<div className="flex flex-col gap-3 mb-4 sm:mb-6 bg-white p-3 sm:p-4 rounded-lg shadow-md">
+<div className="flex flex-col gap-3 mb-4 sm:mb-6 bg-white p-3 sm:p-4 rounded-lg shadow-md sm:flex-row sm:justify-between sm:items-center">
   {/* Search Input */}
-  <div className="flex items-center gap-2 w-full">
-    <label className="text-xs font-medium text-gray-700 shrink-0">Search:</label>
+  <div className="flex items-center gap-2 w-full sm:flex-1 sm:max-w-md">
+    <label className="text-xs sm:text-sm font-medium text-gray-700 shrink-0">Search:</label>
     <input
       type="text"
       value={search}
@@ -252,15 +252,15 @@ export default function PembelianPage() {
       placeholder="Cari..."
     />
   </div>
-  
+
   {/* Add Button */}
   {canCreate && (
     <button
       onClick={() => setShowModal(true)}
-      className="w-full px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2"
+      className="w-full sm:w-auto px-4 sm:px-6 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-2"
     >
       <Plus size={18} />
-      Tambah
+      <span>Tambah</span>
     </button>
   )}
 </div>

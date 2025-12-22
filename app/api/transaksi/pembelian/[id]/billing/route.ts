@@ -84,8 +84,8 @@ export async function POST(
       updated_at: new Date().toISOString()
     };
 
-    // Add jatuh_tempo for transfer payments
-    if (body.jatuh_tempo && pembelian.jenis_pembayaran === 'transfer') {
+    // Add jatuh_tempo for hutang payments
+    if (body.jatuh_tempo && pembelian.jenis_pembayaran === 'hutang') {
       updateData.jatuh_tempo = body.jatuh_tempo;
     }
 

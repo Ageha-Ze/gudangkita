@@ -12,45 +12,100 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search')?.trim() || '';
     const offset = (page - 1) * limit;
 
+    // Build query - Fetch from transaksi_pembelian where jenis_pembayaran = 'hutang'
     let query = supabase
-      .from('hutang_pembelian')
-      .select(
-        `
+      .from('transaksi_pembelian')
+      .select(`
         id,
-        total_hutang,
-        dibayar,
-        sisa,
-        status,
+        tanggal,
+        total,
+        uang_muka,
+        biaya_kirim,
+        jenis_pembayaran,
         jatuh_tempo,
-        suplier:suplier_id ( nama ),
-        transaksi_pembelian:pembelian_id (
-          cabang:cabang_id (
-            nama_cabang
-          )
+        status_pembayaran,
+        suplier:suplier_id (
+          id,
+          nama
+        ),
+        cabang:cabang_id (
+          id,
+          nama_cabang,
+          kode_cabang
+        ),
+        detail_pembelian (
+          id,
+          subtotal
         )
-      `,
-        { count: 'exact' }
-      )
-      .order('created_at', { ascending: false });
+      `)
+      .eq('jenis_pembayaran', 'hutang')
+      .order('tanggal', { ascending: false });
 
-    // Search: status, suplier, cabang
+    // Search: nota supplier, supplier name, cabang name
     if (search) {
       query = query.or(
-        `
-          status.ilike.%${search}%,
-          suplier.nama.ilike.%${search}%,
-          transaksi_pembelian.cabang.nama_cabang.ilike.%${search}%
-        `
+        `nota_supplier.ilike.%${search}%,suplier.nama.ilike.%${search}%,cabang.nama_cabang.ilike.%${search}%`
       );
     }
 
     query = query.range(offset, offset + limit - 1);
 
-    const { data: hutangData, error, count } = await query;
+    const { data: pembelianData, error, count } = await query;
     if (error) throw error;
 
+    // 🔥 Calculate real payments from cicilan_pembelian for each hutang
+    const pembelianIds = (pembelianData || []).map(p => p.id);
+    const { data: allCicilan } = await supabase
+      .from('cicilan_pembelian')
+      .select('pembelian_id, jumlah_cicilan')
+      .in('pembelian_id', pembelianIds);
+
+    // Group cicilan by pembelian_id
+    const cicilanMap = new Map();
+    (allCicilan || []).forEach(c => {
+      const id = c.pembelian_id;
+      if (!cicilanMap.has(id)) {
+        cicilanMap.set(id, 0);
+      }
+      cicilanMap.set(id, cicilanMap.get(id) + parseFloat(c.jumlah_cicilan?.toString() || '0'));
+    });
+
+    // ✅ Transform data to hutang format with real calculations
+    const transformedData = (pembelianData || []).map((item: any) => {
+      // 🔥 Calculate real total (include biaya_kirim, exclude uang_muka from total hutang)
+      const realTotal = parseFloat(item.total?.toString() || '0');
+
+      // 🔥 Calculate real dibayar from cicilan
+      const dibayar = cicilanMap.get(item.id) || 0;
+
+      const sisa = realTotal - dibayar;
+
+      // Determine status based on payment
+      let status = 'belum_lunas';
+      if (sisa <= 0) {
+        status = 'lunas';
+      }
+
+      const cabang = Array.isArray(item.cabang) ? item.cabang[0] : item.cabang;
+      const suplier = Array.isArray(item.suplier) ? item.suplier[0] : item.suplier;
+
+      return {
+        id: item.id,
+        total_hutang: realTotal,
+        dibayar: dibayar,
+        sisa: sisa,
+        status: status,
+        jatuh_tempo: item.jatuh_tempo,
+        suplier: suplier,
+        transaksi_pembelian: {
+          id: item.id,
+          cabang: cabang
+        }
+      };
+    });
+
     return NextResponse.json({
-      data: hutangData ?? [],
+      data: transformedData ?? [],
       pagination: {
         page,
         limit,

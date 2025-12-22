@@ -28,6 +28,7 @@ interface PembelianData {
     nama: string;
     id?: number;
   };
+  jatuh_tempo?: string;
 }
 
 interface Props {
@@ -66,7 +67,7 @@ export default function ModalBilling({ isOpen, onClose, onSuccess, pembelianData
         uang_muka: String(pembelianData.uang_muka || 0),
         biaya_kirim: String(pembelianData.biaya_kirim || 0),
         rekening_bayar: '',
-        jatuh_tempo: pembelianData.jenis_pembayaran === 'transfer' ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : '', // Default 30 days for transfer
+        jatuh_tempo: pembelianData.jenis_pembayaran?.toLowerCase() === 'hutang' ? (pembelianData.jatuh_tempo ? new Date(pembelianData.jatuh_tempo).toISOString().split('T')[0] : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]) : '', // Use existing or default 30 days for hutang (case-insensitive)
       });
       setSelectedKas(null);
     }
@@ -156,8 +157,8 @@ export default function ModalBilling({ isOpen, onClose, onSuccess, pembelianData
         suplier_id: pembelianData.suplier?.id,
       };
 
-      // Add jatuh_tempo for transfer payments
-      if (pembelianData.jenis_pembayaran === 'transfer') {
+      // Add jatuh_tempo for hutang payments (case-insensitive)
+      if (pembelianData.jenis_pembayaran?.toLowerCase() === 'hutang') {
         payload.jatuh_tempo = formData.jatuh_tempo;
       }
 
@@ -235,14 +236,17 @@ export default function ModalBilling({ isOpen, onClose, onSuccess, pembelianData
             <label className="font-medium">Jenis Pembayaran</label>
             <input
               type="text"
-              value={pembelianData.jenis_pembayaran === 'cash' ? 'Cash' : 'Transfer'}
+              value={pembelianData.jenis_pembayaran === 'tunai' ? 'Tunai' : 'Hutang'}
               disabled
               className="col-span-2 px-3 py-2 border rounded bg-gray-100"
             />
           </div>
 
-          {/* Jatuh Tempo - Only show for transfer payments */}
-          {pembelianData.jenis_pembayaran === 'transfer' && (
+          {/* Jatuh Tempo - Only show for hutang payments */}
+          {(() => {
+            console.log('Checking jatuh tempo condition:', pembelianData.jenis_pembayaran?.toLowerCase() === 'hutang', pembelianData.jenis_pembayaran);
+            return pembelianData.jenis_pembayaran?.toLowerCase() === 'hutang';
+          })() && (
             <div className="grid grid-cols-3 items-center gap-4">
               <label className="font-medium">
                 Jatuh Tempo <span className="text-red-500">*</span>
@@ -253,7 +257,7 @@ export default function ModalBilling({ isOpen, onClose, onSuccess, pembelianData
                   value={controlledJatuhTempo}
                   onChange={(e) => setFormData({ ...formData, jatuh_tempo: e.target.value })}
                   className="w-full px-3 py-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required={pembelianData.jenis_pembayaran === 'transfer'}
+                  required={pembelianData.jenis_pembayaran?.toLowerCase() === 'hutang'}
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Tanggal kapan hutang pembelian harus dilunasi
