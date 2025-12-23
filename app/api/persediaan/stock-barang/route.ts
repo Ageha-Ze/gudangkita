@@ -452,7 +452,7 @@ export async function POST(request: NextRequest) {
     // Get current stock from produk table
     const { data: produk, error: produkError } = await supabase
       .from('produk')
-      .select('stok, nama_produk, satuan, hpp')
+      .select('stok, nama_produk, kode_produk, satuan, hpp')
       .eq('id', produk_id)
       .single();
 
@@ -523,6 +523,10 @@ export async function POST(request: NextRequest) {
         hpp: hpp || produk.hpp || 0,
         harga_jual: harga_jual || 0,
         persentase: persentase_harga_jual || 0,
+        // Include product details to avoid fetching from produk table later
+        nama_produk: produk.nama_produk,
+        kode_produk: produk.kode_produk || '',
+        satuan: produk.satuan || 'unit',
       })
       .select()
       .single();

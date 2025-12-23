@@ -16,6 +16,11 @@ interface HutangPembelian {
     cabang?: {
       nama_cabang: string;
     };
+    total?: number;
+    biaya_kirim?: number;
+    detail_pembelian?: Array<{
+      subtotal: number;
+    }>;
   };
 }
 

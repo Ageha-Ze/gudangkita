@@ -103,15 +103,23 @@ class OfflineQueue {
     try {
       console.log(`⚙️ Processing operation: ${operation.id} (${operation.type} ${operation.entityType})`);
 
-      // Import the server action dynamically
-      const { [operation.serverAction]: serverAction } = await import(`@/app/master/${operation.entityType}/actions`);
+      // Since we migrated to API routes, server actions are no longer available
+      // Update the operation to use API routes instead
+      const apiEndpoint = `/api/master/${operation.entityType}`;
+      const response = await fetch(apiEndpoint, {
+        method: operation.type === 'CREATE' ? 'POST' :
+                operation.type === 'UPDATE' ? 'PUT' :
+                'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: operation.type === 'DELETE' ? undefined : JSON.stringify(operation.data)
+      });
 
-      if (!serverAction) {
-        throw new Error(`Server action ${operation.serverAction} not found`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `API request failed with status ${response.status}`);
       }
 
-      // Call the server action
-      const result = await serverAction(operation.data);
+      const result = await response.json();
 
       if (result.success) {
         operation.status = 'completed';

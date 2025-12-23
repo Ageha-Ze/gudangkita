@@ -8,6 +8,7 @@ interface ModalStockManagerProps {
   onClose: () => void;
   onSuccess: () => void;
   mode?: 'add' | 'remove' | 'adjust' | 'price';
+  lockMode?: boolean;
   initialProdukId?: number;
   initialCabangId?: number;
   initialHpp?: number;
@@ -44,6 +45,7 @@ export default function ModalStockManager({
   onClose,
   onSuccess,
   mode = 'add',
+  lockMode = false,
   initialProdukId,
   initialCabangId,
   initialHpp,
@@ -393,9 +395,12 @@ export default function ModalStockManager({
               <button
                 type="button"
                 onClick={() => handleModeChange('add')}
+                disabled={lockMode}
                 className={`p-4 rounded-xl border-2 transition-all ${
                   currentMode === 'add'
                     ? 'border-green-500 bg-green-50 text-green-700'
+                    : lockMode
+                    ? 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
@@ -405,9 +410,12 @@ export default function ModalStockManager({
               <button
                 type="button"
                 onClick={() => handleModeChange('remove')}
+                disabled={lockMode}
                 className={`p-4 rounded-xl border-2 transition-all ${
                   currentMode === 'remove'
                     ? 'border-red-500 bg-red-50 text-red-700'
+                    : lockMode
+                    ? 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
@@ -417,9 +425,12 @@ export default function ModalStockManager({
               <button
                 type="button"
                 onClick={() => handleModeChange('adjust')}
+                disabled={lockMode}
                 className={`p-4 rounded-xl border-2 transition-all ${
                   currentMode === 'adjust'
                     ? 'border-blue-500 bg-blue-50 text-blue-700'
+                    : lockMode
+                    ? 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >
@@ -429,9 +440,12 @@ export default function ModalStockManager({
               <button
                 type="button"
                 onClick={() => handleModeChange('price')}
+                disabled={lockMode}
                 className={`p-4 rounded-xl border-2 transition-all ${
                   currentMode === 'price'
                     ? 'border-yellow-500 bg-yellow-50 text-yellow-700'
+                    : lockMode
+                    ? 'border-gray-100 bg-gray-50 text-gray-400 cursor-not-allowed'
                     : 'border-gray-200 hover:border-gray-300'
                 }`}
               >

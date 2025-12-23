@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Package, Plus, Minus, Edit, History, Download, Search, X, List, LayoutGrid } from 'lucide-react';
+import { Package, Edit, History, Download, Search, Plus, X } from 'lucide-react';
 import { usePermissions, ReadOnlyBanner } from '@/components/PermissionGuard';
 import ModalStockManager from './ModalStockManager';
 import ModalHistory from './ModalHistory';
+import ModalTambahStock from './ModalTambahStock';
+import ModalUpdateHarga from './ModalUpdateHarga';
 import { customToast } from '@/lib/toast';
 
 
@@ -28,17 +30,21 @@ export default function StockBarangPage() {
   const [stocks, setStocks] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [selectedCabang, setSelectedCabang] = useState<number>(0);
+  const [selectedCabang, setSelectedCabang] = useState<number>(-1);
   const [cabangs, setCabangs] = useState<any[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [viewMode, setViewMode] = useState<'card' | 'table'>('card'); // Add view mode toggle
+  const [isMobile, setIsMobile] = useState(false);
 
   // Modal states
   const [showModalStockManager, setShowModalStockManager] = useState(false);
   const [showModalHistory, setShowModalHistory] = useState(false);
+  const [showModalEditProduk, setShowModalEditProduk] = useState(false);
+  const [showModalTambahStock, setShowModalTambahStock] = useState(false);
+  const [showModalUpdateHarga, setShowModalUpdateHarga] = useState(false);
   const [selectedStock, setSelectedStock] = useState<any>(null);
   const [modalMode, setModalMode] = useState<'add' | 'remove' | 'adjust' | 'price'>('add');
+  const [editMode, setEditMode] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Permission guards - Kasir can only view, gudang can manage
@@ -52,6 +58,18 @@ export default function StockBarangPage() {
   useEffect(() => {
     fetchCabangs();
     fetchStocks();
+
+    // Detect mobile screen
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768; // Mobile if less than 768px (md breakpoint)
+      setIsMobile(mobile);
+      console.log('Mobile detection:', mobile, 'Width:', window.innerWidth);
+    };
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+
+    return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
   useEffect(() => {
@@ -60,11 +78,27 @@ export default function StockBarangPage() {
 
   const fetchCabangs = async () => {
     try {
-      const res = await fetch('/api/master/cabang');
+      // Fetch cabangs that have stock data only
+      const res = await fetch('/api/persediaan/stock-barang/cabang-list');
       const json = await res.json();
-      setCabangs(json.data || []);
+
+      if (json.success) {
+        const cabangData = json.data || [];
+        setCabangs(cabangData);
+
+        // Auto-select first branch if available and no branch is selected
+        if (cabangData.length > 0 && selectedCabang === -1) {
+          setSelectedCabang(cabangData[0].id);
+        }
+      } else {
+        // Fallback to empty array if API doesn't exist yet
+        setCabangs([]);
+        console.warn('Cabang list API not available, using empty list');
+      }
     } catch (error) {
       console.error('Error fetching cabangs:', error);
+      // Fallback to empty array
+      setCabangs([]);
     }
   };
 
@@ -78,10 +112,13 @@ export default function StockBarangPage() {
         cabang_id: selectedCabang.toString(),
       });
 
+      console.log('🔍 Fetching stocks with cabang filter:', selectedCabang);
+
       const res = await fetch(`/api/persediaan/stock-barang?${params}`);
       const json = await res.json();
 
       if (json.success) {
+        console.log(`✅ Got ${json.data?.length || 0} stock items for cabang ${selectedCabang}`);
         setStocks(json.data || []);
         setTotalPages(json.pagination?.totalPages || 1);
       }
@@ -100,7 +137,7 @@ export default function StockBarangPage() {
     persentase?: number;
   }>({});
 
-  const handleManageStock = (stock: StockItem | null = null, modalMode: 'add' | 'remove' | 'adjust' | 'price' = 'add') => {
+  const handleManageStock = (stock: StockItem | null = null, modalMode: 'add' | 'remove' | 'adjust' | 'price' = 'add', lockMode: boolean = false) => {
     if (stock) {
       // Clicked Manage on a specific stock item - pre-fill with stock data
       setSelectedStock({
@@ -129,9 +166,89 @@ export default function StockBarangPage() {
     setShowModalStockManager(true);
   };
 
-  const handleOpenHistory = (stock: StockItem) => {
+  const handleOpenHistory = (stock: StockItem | null) => {
+    if (stock) {
+      setSelectedStock(stock);
+      setShowModalHistory(true);
+    }
+  };
+
+  const handleEditProduk = (stock: StockItem) => {
     setSelectedStock(stock);
-    setShowModalHistory(true);
+    setShowModalEditProduk(true);
+  };
+
+  const handleSaveEditProduk = async (data: {
+    stock: number;
+    persentase: number;
+    hargaJual: number;
+  }) => {
+    if (!selectedStock) return;
+
+    setLoading(true);
+    setError(null);
+
+    const requestData = {
+      produk_id: selectedStock.produk_id,
+      cabang_id: selectedStock.cabang_id,
+      stock: data.stock,
+      persentase: data.persentase,
+      harga_jual: data.hargaJual,
+    };
+
+    console.log('🚀 Sending Edit Produk request:', requestData);
+
+    try {
+      const response = await fetch('/api/persediaan/stock-barang/update-produk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestData),
+      });
+
+      console.log('📡 Response status:', response.status);
+      console.log('📡 Response headers:', Object.fromEntries(response.headers.entries()));
+
+      if (!response.ok) {
+        let errorMessage = 'Gagal mengupdate produk';
+
+        if (response.status === 403) {
+          errorMessage = 'Anda tidak memiliki akses untuk mengupdate produk.';
+        } else if (response.status === 404) {
+          errorMessage = 'Data stock produk tidak ditemukan.';
+        } else if (response.status === 500) {
+          errorMessage = 'Server mengalami masalah. Silakan coba lagi.';
+        } else {
+          const errorJson = await response.json().catch(() => null);
+          console.log('❌ Error response:', errorJson);
+          if (errorJson?.error) {
+            errorMessage += ': ' + errorJson.error;
+          }
+          if (errorJson?.details) {
+            errorMessage += ' (Details: ' + errorJson.details + ')';
+          }
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      const result = await response.json();
+      console.log('✅ API Response:', result);
+
+      if (result.success) {
+        customToast.success('Success!');
+        setShowModalEditProduk(false);
+        fetchStocks();
+      } else {
+        setError(result.error || 'Gagal mengupdate produk');
+      }
+    } catch (error: any) {
+      console.error('💥 Error updating produk:', error);
+      const errorMessage = error.message?.includes('Gagal mengupdate') ?
+        error.message : 'Terjadi kesalahan saat mengupdate produk.';
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleModalSuccess = () => {
@@ -667,126 +784,50 @@ Proses ini akan memperbaiki data stock secara otomatis.
                   />
                 </div>
 
-                {/* Branch Filter (Table View Only) */}
-                {viewMode === 'table' && (
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-sm text-gray-600 whitespace-nowrap">Gudang:</span>
-                    <select
-                      value={selectedCabang}
-                      onChange={(e) => {
-                        setSelectedCabang(parseInt(e.target.value));
-                        setPage(1);
-                      }}
-                      className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm"
-                    >
-                      <option value={0}>Semua Cabang</option>
-                      {cabangs.map((cabang) => (
-                        <option key={cabang.id} value={cabang.id}>
-                          {cabang.nama_cabang}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                {/* Branch Filter */}
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm text-gray-600 whitespace-nowrap">Gudang:</span>
+                  <select
+                    value={selectedCabang}
+                    onChange={(e) => {
+                      setSelectedCabang(parseInt(e.target.value));
+                      setPage(1);
+                    }}
+                    className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none text-sm"
+                  >
+                    {cabangs.map((cabang) => (
+                      <option key={cabang.id} value={cabang.id}>
+                        {cabang.nama_cabang}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-
-              {/* View Toggle - Mobile Responsive */}
-              <div className="flex flex-col xs:flex-row gap-2 xs:gap-3 items-start xs:items-center xs:justify-end">
-                <div className="flex items-center gap-2 w-full xs:w-auto">
-                  <span className="text-sm text-gray-600 whitespace-nowrap">Tampilan:</span>
-                  <div className="flex bg-gray-100 rounded-lg p-1 w-full xs:w-auto min-w-0">
-                    <button
-                      onClick={() => setViewMode('table')}
-                      className={`flex-1 xs:flex-none px-2 xs:px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                        viewMode === 'table'
-                          ? 'bg-white text-blue-600 shadow-sm'
-                          : 'text-gray-600 hover:text-gray-800'
-                      }`}
-                      title="Mode Tabel"
-                    >
-                      <LayoutGrid className="w-4 h-4 inline mr-1" />
-                      <span className="hidden xs:inline">Tabel</span>
-                    </button>
-                    <button
-                      onClick={() => setViewMode('card')}
-                      className={`flex-1 xs:flex-none px-2 xs:px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                        viewMode === 'card'
-                          ? 'bg-white text-blue-600 shadow-sm'
-                          : 'text-gray-600 hover:text-gray-800'
-                      }`}
-                      title="Mode Kartu"
-                    >
-                      <List className="w-4 h-4 inline mr-1" />
-                      <span className="hidden xs:inline">Kartu</span>
-                    </button>
-                  </div>
-              </div>
-            </div>
-
-            {/* Action Buttons - Mobile Responsive */}
-            <div className="flex flex-wrap gap-2 sm:gap-3 justify-end sm:justify-start">
-              {/* Users with stock.manage permission */}
-              {canManage && (
-                <>
-                  <button
-                    onClick={() => handleManageStock(null)}
-                    className="sm:flex-none px-3 py-2.5 sm:px-4 sm:py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 active:bg-blue-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
-                  >
-                    <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
-                    <span className="hidden sm:inline whitespace-nowrap">Tambah Stock</span>
-                  </button>
-
-                  <button
-                    onClick={handleFixNegativeStock}
-                    className={`sm:flex-none px-3 py-2.5 sm:px-4 sm:py-3 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium text-sm relative ${
-                      negativeStockCount > 0
-                        ? 'bg-orange-500 hover:bg-orange-600 active:bg-orange-700 animate-pulse'
-                        : 'bg-blue-500 hover:bg-blue-600 active:bg-blue-700'
-                    }`}
-                    title="Fix stock discrepancies from pembelian & produksi"
-                  >
-                    <span className="text-lg">🔧</span>
-                    {negativeStockCount > 0 && (
-                      <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center sm:hidden">
-                        {negativeStockCount}
-                      </span>
-                    )}
-                    <span className="hidden sm:inline whitespace-nowrap">
-                      Fix Stock {negativeStockCount > 0 ? `(${negativeStockCount})` : ''}
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={handleResetRebuild}
-                    className="sm:flex-none px-3 py-2.5 sm:px-4 sm:py-3 bg-purple-500 text-white rounded-lg hover:bg-purple-600 active:bg-purple-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
-                    title="Reset & rebuild all stock from scratch"
-                  >
-                    <span className="text-lg">🔄</span>
-                    <span className="hidden sm:inline whitespace-nowrap">Reset & Rebuild</span>
-                  </button>
-
-                  <button
-                    onClick={handleExport}
-                    className="sm:flex-none px-3 py-2.5 sm:px-4 sm:py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 active:bg-green-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
-                  >
-                    <Download className="w-4 h-4 sm:w-5 sm:h-5" />
-                    <span className="hidden sm:inline whitespace-nowrap">Export</span>
-                  </button>
-                </>
-              )}
-
-              {/* Kasir can export stock data */}
-              {!canManage && (
-                <button
-                  onClick={handleExport}
-                  className="sm:flex-none px-3 py-2.5 sm:px-4 sm:py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 active:bg-green-700 transition-colors flex items-center justify-center gap-2 font-medium text-sm"
-                >
-                  <Download className="w-4 h-4 sm:w-5 sm:h-5" />
-                  <span className="hidden sm:inline whitespace-nowrap">Export</span>
-                </button>
-              )}
             </div>
           </div>
+
+          {/* Action Buttons - Separated section with proper spacing */}
+          {canManage && (
+            <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+              <div className="flex flex-wrap gap-2 sm:gap-3 justify-start">
+                <button
+                  onClick={() => setEditMode(!editMode)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
+                >
+                  {editMode ? 'Kembali' : 'Edit Produk'}
+                </button>
+
+                {editMode && (
+                  <button
+                    onClick={() => setShowModalTambahStock(true)}
+                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium text-sm"
+                  >
+                    Tambah Stock
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="p-6">
             {loading ? (
@@ -798,26 +839,63 @@ Proses ini akan memperbaiki data stock secara otomatis.
                 <Package className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                 <p className="text-gray-500">Tidak ada data stock</p>
               </div>
-            ) : viewMode === 'table' ? (
-              <div className="overflow-x-auto">
-                <table className="w-full table-auto bg-white rounded-lg shadow-sm">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Nama Barang</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Gudang</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">HPP</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Harga Jual</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Persentase</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Stock ({filteredStocks[0]?.satuan || 'Kg'})</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Info Box</th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredStocks.map((item) => {
-                      const isLowStock = item.stock > 0 && item.stock < 100;
-                      const isNegative = item.stock < 0;
-                      return (
+            ) : editMode ? (
+              // Edit Mode - Table for desktop, Cards for mobile
+              isMobile ? (
+                <div className="space-y-4">
+                  {filteredStocks.map((item) => (
+                    <div key={`${item.produk_id}-${item.cabang_id}`} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                      <div className="flex justify-between items-start mb-3">
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-gray-900 text-sm">{item.nama_produk}</h3>
+                          <p className="text-xs text-gray-500">{item.kode_produk}</p>
+                        </div>
+                        {canManage && (
+                                <button
+                                  onClick={() => {
+                                    setSelectedStock(item);
+                                    setShowModalUpdateHarga(true);
+                                  }}
+                                  className="px-3 py-1 bg-blue-500 text-white text-xs rounded-md hover:bg-blue-600 transition-colors flex items-center gap-1"
+                                  title="Edit Harga"
+                                >
+                                  <Edit className="w-3 h-3" />
+                                </button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <span className="text-gray-500">Gudang:</span>
+                          <p className="font-medium text-gray-900">{item.cabang}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">HPP:</span>
+                          <p className="font-medium text-gray-900">Rp {item.hpp.toLocaleString('id-ID')}</p>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-gray-500">Stock:</span>
+                          <p className="font-medium text-gray-900">
+                            {item.stock.toFixed(item.satuan.toLowerCase() === 'kg' ? 3 : 2)} {item.satuan}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full table-auto bg-white rounded-lg shadow-sm">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Nama Barang</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Gudang</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">HPP</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Stock</th>
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredStocks.map((item) => (
                         <tr key={`${item.produk_id}-${item.cabang_id}`} className="border-b border-gray-200 hover:bg-gray-50">
                           <td className="px-4 py-3">
                             <div>
@@ -832,190 +910,231 @@ Proses ini akan memperbaiki data stock secara otomatis.
                             <span className="text-gray-700">Rp {item.hpp.toLocaleString('id-ID')}</span>
                           </td>
                           <td className="px-4 py-3">
-                            <span className="text-gray-700">Rp {item.harga_jual.toLocaleString('id-ID')}</span>
+                            <span className="text-gray-700">
+                              {item.stock.toFixed(item.satuan.toLowerCase() === 'kg' ? 3 : 2)} {item.satuan}
+                            </span>
                           </td>
                           <td className="px-4 py-3">
-                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
+                            <div className="flex gap-2 justify-center">
+                              {canManage && (
+                                <button
+                                  onClick={() => handleEditProduk(item)}
+                                  className="px-3 py-1 bg-blue-500 text-white text-xs rounded-md hover:bg-blue-600 transition-colors flex items-center gap-1"
+                                  title="Edit Produk"
+                                >
+                                  <Edit className="w-3 h-3" />
+                                  Edit
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : (
+              // Normal Mode - Table for desktop, Cards for mobile
+              isMobile ? (
+                <div className="space-y-4">
+                  {filteredStocks.map((item) => {
+                    const isLowStock = item.stock > 0 && item.stock < 100;
+                    const isNegative = item.stock < 0;
+                    return (
+                      <div key={`${item.produk_id}-${item.cabang_id}`} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                        <div className="flex justify-between items-start mb-3">
+                          <div className="flex-1">
+                            <h3 className="font-semibold text-gray-900 text-sm">{item.nama_produk}</h3>
+                            <p className="text-xs text-gray-500">{item.kode_produk}</p>
+                          </div>
+                          <div className="flex gap-1">
+                            {canManage && (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    setSelectedStock(item);
+                                    setShowModalUpdateHarga(true);
+                                  }}
+                                  className="px-2 py-1 bg-blue-500 text-white text-xs rounded-md hover:bg-blue-600 transition-colors"
+                                  title="Edit Harga"
+                                >
+                                  <Edit className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={() => handleOpenHistory(item)}
+                                  className="px-2 py-1 bg-purple-500 text-white text-xs rounded-md hover:bg-purple-600 transition-colors"
+                                  title="History Stock"
+                                >
+                                  <History className="w-3 h-3" />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+                          <div>
+                            <span className="text-gray-500">Gudang:</span>
+                            <p className="font-medium text-gray-900">{item.cabang}</p>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">HPP:</span>
+                            <p className="font-medium text-gray-900">Rp {item.hpp.toLocaleString('id-ID')}</p>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Harga Jual:</span>
+                            <p className="font-medium text-gray-900">Rp {item.harga_jual.toLocaleString('id-ID')}</p>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Persentase:</span>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold ml-1 ${
                               item.margin >= 20 ? 'bg-green-100 text-green-700' :
                               item.margin >= 10 ? 'bg-yellow-100 text-yellow-700' :
                               'bg-red-100 text-red-700'
                             }`}>
                               {item.margin.toFixed(2)}%
                             </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <span className={`font-semibold ${
-                                isNegative ? 'text-red-600' :
-                                isLowStock ? 'text-orange-600' : 'text-gray-900'
-                              }`}>
-                                {item.stock.toFixed(item.satuan.toLowerCase() === 'kg' ? 3 : 2)}
-                              </span>
-                              <span className="text-sm text-gray-500">{item.satuan}</span>
-                              {(item.stock_masuk > 0 || item.stock_keluar > 0) && (
-                                <span className="text-xs text-gray-400">
-                                  (↗️{item.stock_masuk?.toFixed(item.satuan.toLowerCase() === 'kg' ? 3 : 2) || 0} ↘️{item.stock_keluar?.toFixed(item.satuan.toLowerCase() === 'kg' ? 3 : 2) || 0})
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-1">
-                              {isNegative ? (
-                                <span className="px-2 py-1 bg-red-600 text-white text-xs font-semibold rounded-full">
-                                  MINUS!
-                                </span>
-                              ) : isLowStock ? (
-                                <span className="px-2 py-1 bg-orange-100 text-orange-600 text-xs font-semibold rounded-full">
-                                  LOW
-                                </span>
-                              ) : (
-                                <span className="text-gray-400">—</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex gap-2 justify-center">
-                              {canManage && (
-                                <button
-                                  onClick={() => handleManageStock(item)}
-                                  className="px-3 py-1 bg-blue-500 text-white text-xs rounded-md hover:bg-blue-600 transition-colors flex items-center gap-1"
-                                  title="Manage Stock & Price"
-                                >
-                                  <Edit className="w-3 h-3" />
-                                  Manage
-                                </button>
-                              )}
-                              {canView && viewMode === 'table' && selectedCabang > 0 && (
-                                <button
-                                  onClick={() => handleOpenHistory(item)}
-                                  className="px-3 py-1 bg-purple-500 text-white text-xs rounded-md hover:bg-purple-600 transition-colors flex items-center gap-1"
-                                  title="History"
-                                >
-                                  <History className="w-3 h-3" />
-                                  History
-                                </button>
-                              )}
-                            </div>
-                            {/* Delete Button - Below others */}
-                            {canManage && (
-                              <button
-                                onClick={() => handleDeleteStock(item)}
-                                className="mt-1 px-3 py-1 bg-gray-700 text-white text-xs rounded-md hover:bg-red-600 transition-colors flex items-center gap-1 w-full justify-center"
-                                title="Delete Stock"
-                              >
-                                <X className="w-3 h-3" />
-                                Hapus Stock
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                {filteredStocks.map((item) => {
-                  const isLowStock = item.stock > 0 && item.stock < 100;
-                  const isNegative = item.stock < 0;
-                  return (
-                    <div
-                      key={`${item.produk_id}-${item.cabang_id}`}
-                      className={`bg-gradient-to-br from-white to-gray-50 rounded-lg sm:rounded-xl p-3 sm:p-4 md:p-5 border-2 ${
-                        isNegative ? 'border-red-500 bg-red-50' :
-                        isLowStock ? 'border-orange-300' : 'border-gray-200'
-                      } hover:shadow-lg transition-all duration-200`}
-                    >
-                      <div className="flex items-start justify-between mb-2 sm:mb-3">
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-bold text-gray-800 text-sm sm:text-base md:text-lg truncate">{item.nama_produk}</h3>
-                          <p className="text-xs text-gray-500 truncate">{item.kode_produk}</p>
-                        </div>
-                        {isNegative ? (
-                          <span className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-red-600 text-white text-xs font-semibold rounded-full animate-pulse flex-shrink-0">
-                            MINUS!
-                          </span>
-                        ) : isLowStock ? (
-                          <span className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-orange-100 text-orange-600 text-xs font-semibold rounded-full flex-shrink-0">
-                            LOW
-                          </span>
-                        ) : null}
-                      </div>
-
-                      <div className="mb-3 sm:mb-4">
-                        <div className="flex items-baseline gap-2">
-                          <span className={`text-xl sm:text-2xl md:text-3xl font-bold ${
-                            isNegative ? 'text-red-600' :
-                            isLowStock ? 'text-orange-600' : 'text-gray-800'
-                          }`}>
-                            {item.stock.toFixed(item.satuan.toLowerCase() === 'kg' ? 3 : 2)}
-                          </span>
-                          <span className="text-gray-500 text-xs sm:text-sm">{item.satuan}</span>
-                        </div>
-                        <p className="text-xs text-gray-500 mt-1 truncate">📍 {item.cabang}</p>
-                        {(item.stock_masuk > 0 || item.stock_keluar > 0) && (
-                          <div className="mt-2 text-xs text-gray-600 space-y-0.5">
-                            <p className="truncate">↗️ Masuk: <span className="font-semibold text-green-600">{item.stock_masuk?.toFixed(2) || 0}</span></p>
-                            <p className="truncate">↘️ Keluar: <span className="font-semibold text-red-600">{item.stock_keluar?.toFixed(2) || 0}</span></p>
                           </div>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-3 sm:mb-4 p-2 sm:p-3 bg-white rounded-lg border border-gray-100">
-                        <div className="min-w-0">
-                          <p className="text-xs text-gray-500 truncate">HPP</p>
-                          <p className="text-xs sm:text-sm font-semibold text-gray-700 truncate">
-                            Rp {item.hpp.toLocaleString('id-ID')}
-                          </p>
                         </div>
-                        <div className="min-w-0">
-                          <p className="text-xs text-gray-500 truncate">Harga Jual</p>
-                          <p className="text-xs sm:text-sm font-semibold text-gray-700 truncate">
-                            Rp {item.harga_jual.toLocaleString('id-ID')}
-                          </p>
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <span className="text-gray-500 text-sm">Stock:</span>
+                            <p className={`font-semibold text-sm ${
+                              isNegative ? 'text-red-600' :
+                              isLowStock ? 'text-orange-600' : 'text-gray-900'
+                            }`}>
+                              {item.stock.toFixed(item.satuan.toLowerCase() === 'kg' ? 3 : 2)} {item.satuan}
+                            </p>
+                            {(item.stock_masuk > 0 || item.stock_keluar > 0) && (
+                              <p className="text-xs text-gray-400">
+                                (↗️{item.stock_masuk?.toFixed(item.satuan.toLowerCase() === 'kg' ? 3 : 2) || 0} ↘️{item.stock_keluar?.toFixed(item.satuan.toLowerCase() === 'kg' ? 3 : 2) || 0})
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {isNegative ? (
+                              <span className="px-2 py-1 bg-red-600 text-white text-xs font-semibold rounded-full">
+                                MINUS!
+                              </span>
+                            ) : isLowStock ? (
+                              <span className="px-2 py-1 bg-orange-100 text-orange-600 text-xs font-semibold rounded-full">
+                                LOW
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
-
-                      <div className="mb-3 sm:mb-4">
-                        <span className={`inline-flex items-center px-2 py-1 sm:px-3 rounded-full text-xs font-semibold ${
-                          item.margin >= 20 ? 'bg-green-100 text-green-700' :
-                          item.margin >= 10 ? 'bg-yellow-100 text-yellow-700' :
-                          'bg-red-100 text-red-700'
-                        }`}>
-                          Margin: {item.margin.toFixed(2)}%
-                        </span>
-                      </div>
-
-                      <div className="space-y-2">
-                        {canManage && (
-                          <button
-                            onClick={() => handleManageStock(item)}
-                            className="w-full p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center justify-center gap-1 text-xs sm:text-sm"
-                            title="Manage Stock & Price"
-                          >
-                            <Edit className="w-3 h-3 sm:w-4 sm:h-4" />
-                            <span className="hidden xs:inline">Manage</span>
-                          </button>
-                        )}
-
-                        {/* Delete Button - Full Width Below - Only for gudang */}
-                        {canManage && (
-                          <button
-                            onClick={() => handleDeleteStock(item)}
-                            className="w-full p-2 bg-gray-700 text-white rounded-lg hover:bg-red-600 transition-colors flex items-center justify-center gap-1 text-xs sm:text-sm"
-                            title="Delete Stock"
-                          >
-                            <X className="w-3 h-3 sm:w-4 sm:h-4" />
-                            <span className="hidden xs:inline">Hapus Stock</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full table-auto bg-white rounded-lg shadow-sm">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Nama Barang</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Gudang</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">HPP</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Harga Jual</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Persentase</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Stock ({filteredStocks[0]?.satuan || 'Kg'})</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Info Box</th>
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredStocks.map((item) => {
+                        const isLowStock = item.stock > 0 && item.stock < 100;
+                        const isNegative = item.stock < 0;
+                        return (
+                          <tr key={`${item.produk_id}-${item.cabang_id}`} className="border-b border-gray-200 hover:bg-gray-50">
+                            <td className="px-4 py-3">
+                              <div>
+                                <p className="font-semibold text-gray-900">{item.nama_produk}</p>
+                                <p className="text-sm text-gray-500">{item.kode_produk}</p>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-gray-700">{item.cabang}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-gray-700">Rp {item.hpp.toLocaleString('id-ID')}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="text-gray-700">Rp {item.harga_jual.toLocaleString('id-ID')}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
+                                item.margin >= 20 ? 'bg-green-100 text-green-700' :
+                                item.margin >= 10 ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>
+                                {item.margin.toFixed(2)}%
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <span className={`font-semibold ${
+                                  isNegative ? 'text-red-600' :
+                                  isLowStock ? 'text-orange-600' : 'text-gray-900'
+                                }`}>
+                                  {item.stock.toFixed(item.satuan.toLowerCase() === 'kg' ? 3 : 2)}
+                                </span>
+                                <span className="text-sm text-gray-500">{item.satuan}</span>
+                                {(item.stock_masuk > 0 || item.stock_keluar > 0) && (
+                                  <span className="text-xs text-gray-400">
+                                    (↗️{item.stock_masuk?.toFixed(item.satuan.toLowerCase() === 'kg' ? 3 : 2) || 0} ↘️{item.stock_keluar?.toFixed(item.satuan.toLowerCase() === 'kg' ? 3 : 2) || 0})
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-1">
+                                {isNegative ? (
+                                  <span className="px-2 py-1 bg-red-600 text-white text-xs font-semibold rounded-full">
+                                    MINUS!
+                                  </span>
+                                ) : isLowStock ? (
+                                  <span className="px-2 py-1 bg-orange-100 text-orange-600 text-xs font-semibold rounded-full">
+                                    LOW
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-400">—</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex gap-2 justify-center">
+                                {canManage && (
+                                  <>
+                                    <button
+                                      onClick={() => {
+                                        setSelectedStock(item);
+                                        setShowModalUpdateHarga(true);
+                                      }}
+                                      className="px-3 py-1 bg-blue-500 text-white text-xs rounded-md hover:bg-blue-600 transition-colors flex items-center gap-1"
+                                      title="Edit Harga"
+                                    >
+                                      <Edit className="w-3 h-3" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleOpenHistory(item)}
+                                      className="px-3 py-1 bg-purple-500 text-white text-xs rounded-md hover:bg-purple-600 transition-colors flex items-center gap-1"
+                                      title="History Stock"
+                                    >
+                                      <History className="w-3 h-3" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )
             )}
 
             {totalPages > 1 && (
@@ -1048,11 +1167,38 @@ Proses ini akan memperbaiki data stock secara otomatis.
         onClose={() => setShowModalStockManager(false)}
         onSuccess={handleModalSuccess}
         mode={modalMode}
+        lockMode={true}
         initialProdukId={initialModalValues.produkId}
         initialCabangId={initialModalValues.cabangId}
         initialHpp={initialModalValues.hpp}
         initialHargaJual={initialModalValues.hargaJual}
         initialPersentase={initialModalValues.persentase}
+      />
+
+      <ModalTambahStock
+        isOpen={showModalTambahStock}
+        onClose={() => setShowModalTambahStock(false)}
+        onSuccess={handleModalSuccess}
+        initialProdukId={selectedStock?.produk_id}
+        initialCabangId={selectedStock?.cabang_id}
+        initialHpp={selectedStock?.hpp}
+        initialHargaJual={selectedStock?.harga_jual}
+        initialPersentase={selectedStock?.margin}
+      />
+
+      <ModalUpdateHarga
+        isOpen={showModalUpdateHarga}
+        onClose={() => setShowModalUpdateHarga(false)}
+        onSuccess={handleModalSuccess}
+        initialProdukId={selectedStock?.produk_id}
+        initialCabangId={selectedStock?.cabang_id}
+        initialHpp={selectedStock?.hpp}
+        initialHargaJual={selectedStock?.harga_jual}
+        initialPersentase={selectedStock?.margin}
+        initialNamaProduk={selectedStock?.nama_produk}
+        initialKodeProduk={selectedStock?.kode_produk}
+        initialNamaCabang={selectedStock?.cabang}
+        initialKodeCabang={selectedStock?.cabang} // Note: cabang might be just the name, not code
       />
 
       <ModalHistory
@@ -1063,7 +1209,129 @@ Proses ini akan memperbaiki data stock secara otomatis.
         cabangId={selectedStock?.cabang_id}
       />
 
-      </div>
+      {/* Edit Produk Modal */}
+      {showModalEditProduk && selectedStock && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="bg-blue-600 text-white px-6 py-4 rounded-t-lg flex items-center justify-between">
+              <h2 className="text-xl font-bold">EDIT PRODUK</h2>
+              <button
+                onClick={() => setShowModalEditProduk(false)}
+                className="p-1 hover:bg-blue-700 rounded-full transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              {/* Nama Produk - Read Only */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Nama Produk
+                </label>
+                <input
+                  type="text"
+                  value={selectedStock.nama_produk}
+                  readOnly
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600"
+                />
+              </div>
+
+              {/* Gudang - Read Only */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Gudang
+                </label>
+                <input
+                  type="text"
+                  value={selectedStock.cabang}
+                  readOnly
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600"
+                />
+              </div>
+
+              {/* HPP - Read Only */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  HPP
+                </label>
+                <input
+                  type="text"
+                  value={`Rp ${selectedStock.hpp.toLocaleString('id-ID')}`}
+                  readOnly
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-600"
+                />
+              </div>
+
+              {/* Jumlah Stock - Editable */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Jumlah Stock ({selectedStock.satuan})
+                </label>
+                <input
+                  type="number"
+                  step={selectedStock.satuan.toLowerCase() === 'kg' ? '0.001' : '1'}
+                  defaultValue={selectedStock.stock}
+                  id="editStock"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Persentase Harga Jual - Editable */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Persentase Harga Jual (%)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  defaultValue={selectedStock.margin}
+                  id="editPersentase"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Harga Jual - Editable */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Harga Jual
+                </label>
+                <input
+                  type="number"
+                  defaultValue={selectedStock.harga_jual}
+                  id="editHargaJual"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 p-6 pt-0">
+              <button
+                onClick={() => setShowModalEditProduk(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition"
+              >
+                Batal
+              </button>
+              <button
+                onClick={() => {
+                  const stockInput = document.getElementById('editStock') as HTMLInputElement;
+                  const persentaseInput = document.getElementById('editPersentase') as HTMLInputElement;
+                  const hargaJualInput = document.getElementById('editHargaJual') as HTMLInputElement;
+
+                  const stock = parseFloat(stockInput.value) || 0;
+                  const persentase = parseFloat(persentaseInput.value) || 0;
+                  const hargaJual = parseFloat(hargaJualInput.value) || 0;
+
+                  handleSaveEditProduk({ stock, persentase, hargaJual });
+                }}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                Simpan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

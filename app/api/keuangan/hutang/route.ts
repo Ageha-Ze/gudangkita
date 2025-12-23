@@ -72,8 +72,10 @@ export async function GET(request: NextRequest) {
 
     // ✅ Transform data to hutang format with real calculations
     const transformedData = (pembelianData || []).map((item: any) => {
-      // 🔥 Calculate real total (include biaya_kirim, exclude uang_muka from total hutang)
-      const realTotal = parseFloat(item.total?.toString() || '0');
+      // 🔥 Calculate real total (subtotal + biaya_kirim as per calculateTotal function)
+      const subtotal = parseFloat(item.total?.toString() || '0');
+      const biayaKirim = parseFloat(item.biaya_kirim?.toString() || '0');
+      const realTotal = subtotal + biayaKirim;
 
       // 🔥 Calculate real dibayar from cicilan
       const dibayar = cicilanMap.get(item.id) || 0;
