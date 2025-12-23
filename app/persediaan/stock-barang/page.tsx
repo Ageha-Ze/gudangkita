@@ -852,14 +852,12 @@ Proses ini akan memperbaiki data stock secara otomatis.
                         </div>
                         {canManage && (
                                 <button
-                                  onClick={() => {
-                                    setSelectedStock(item);
-                                    setShowModalUpdateHarga(true);
-                                  }}
+                                  onClick={() => handleEditProduk(item)}
                                   className="px-3 py-1 bg-blue-500 text-white text-xs rounded-md hover:bg-blue-600 transition-colors flex items-center gap-1"
-                                  title="Edit Harga"
+                                  title="Edit Produk"
                                 >
                                   <Edit className="w-3 h-3" />
+                                  Edit
                                 </button>
                         )}
                       </div>
