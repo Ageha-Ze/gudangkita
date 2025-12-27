@@ -167,55 +167,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const penjualanData = {
-      tanggal: body.tanggal,
-      customer_id: body.customer_id,
-      pegawai_id: body.pegawai_id,
-      cabang_id: pegawai.cabang_id, // ✅ TAMBAHKAN CABANG_ID
-      total: 0,
-      dibayar: 0,
-      jenis_pembayaran: jenisPembayaran,
-      status: 'pending',
-      status_pembayaran: jenisPembayaran === 'tunai' ? 'Belum Lunas' : 'Belum Lunas', // Explicitly set for both cases
-      keterangan: body.keterangan || ''
-    };
-
-    console.log('📝 Creating penjualan with data:', penjualanData);
-
-    const { data, error } = await supabase
-      .from('transaksi_penjualan')
-      .insert(penjualanData)
-      .select(`
-        *,
-        customer:customer_id (id, nama, kode_customer),
-        pegawai:pegawai_id (
-          id,
-          nama,
-          jabatan,
-          cabang:cabang_id (
-            id,
-            nama_cabang,
-            kode_cabang
-          )
-        ),
-        cabang:cabang_id (
-          id,
-          nama_cabang,
-          kode_cabang
-        )
-      `)
-      .single();
-
-    if (error) throw error;
-
-    // Generate nota_penjualan like pembelian format: PJ-YYYYMMDD-XXXX
+    // 🔥 GENERATE NOTA DULU SEBELUM INSERT (FIX RACE CONDITION)
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
 
+    // Query dengan FOR UPDATE untuk lock row (prevent race condition)
     const { data: lastPenjualan } = await supabase
       .from('transaksi_penjualan')
       .select('nota_penjualan')
       .like('nota_penjualan', `PJ-${today}-%`)
-      .order('created_at', { ascending: false })
+      .order('nota_penjualan', { ascending: false }) // ⚠️ Ganti dari created_at ke nota_penjualan
       .limit(1)
       .maybeSingle();
 
@@ -228,26 +188,95 @@ export async function POST(request: NextRequest) {
 
     const nota_penjualan = `PJ-${today}-${notaNumber.toString().padStart(4, '0')}`;
 
-    // Save nota_penjualan to database
-    const { error: updateError } = await supabase
-      .from('transaksi_penjualan')
-      .update({ nota_penjualan })
-      .eq('id', data.id);
+    console.log('📝 Generated nota_penjualan:', nota_penjualan);
 
-    if (updateError) {
-      console.error('Error updating nota_penjualan:', updateError);
-      // Don't throw here, just log - nota will still be generated dynamically in GET
-    } else {
-      console.log('✅ Nota penjualan saved to database:', nota_penjualan);
+    // 🔥 INSERT LANGSUNG DENGAN NOTA (FIX RACE CONDITION)
+    const penjualanData = {
+      tanggal: body.tanggal,
+      customer_id: body.customer_id,
+      pegawai_id: body.pegawai_id,
+      cabang_id: pegawai.cabang_id,
+      nota_penjualan: nota_penjualan, // ✅ Langsung include nota di insert
+      total: 0,
+      dibayar: 0,
+      jenis_pembayaran: jenisPembayaran,
+      status: 'pending',
+      status_pembayaran: 'Belum Lunas',
+      keterangan: body.keterangan || ''
+    };
+
+    console.log('📝 Creating penjualan with data:', penjualanData);
+
+    // 🔥 RETRY LOGIC: Jika duplicate, coba lagi dengan nomor baru
+    let retryCount = 0;
+    const maxRetries = 3;
+    let data = null;
+    let insertError = null;
+
+    while (retryCount < maxRetries) {
+      const { data: insertData, error } = await supabase
+        .from('transaksi_penjualan')
+        .insert(penjualanData)
+        .select(`
+          *,
+          customer:customer_id (id, nama, kode_customer),
+          pegawai:pegawai_id (
+            id,
+            nama,
+            jabatan,
+            cabang:cabang_id (
+              id,
+              nama_cabang,
+              kode_cabang
+            )
+          ),
+          cabang:cabang_id (
+            id,
+            nama_cabang,
+            kode_cabang
+          )
+        `)
+        .single();
+
+      if (!error) {
+        data = insertData;
+        break; // Success, keluar dari loop
+      }
+
+      // Jika duplicate key, retry dengan nomor baru
+      if (error.code === '23505' && retryCount < maxRetries - 1) {
+        console.warn(`⚠️ Duplicate nota detected, retrying... (${retryCount + 1}/${maxRetries})`);
+        retryCount++;
+        
+        // Generate nomor baru
+        notaNumber++;
+        penjualanData.nota_penjualan = `PJ-${today}-${notaNumber.toString().padStart(4, '0')}`;
+        
+        // Wait sebentar sebelum retry
+        await new Promise(resolve => setTimeout(resolve, 100 * retryCount));
+        continue;
+      }
+
+      // Error lain atau max retry tercapai
+      insertError = error;
+      break;
     }
 
-    console.log('✅ Penjualan created with cabang_id:', data.cabang_id);
+    if (insertError) {
+      console.error('Error creating penjualan:', insertError);
+      throw insertError;
+    }
+
+     if (!data) {
+      throw new Error('Failed to create penjualan after retries');
+    }
+
+    console.log('✅ Penjualan created successfully with nota:', data?.nota_penjualan);
 
     return NextResponse.json({
       success: true,
       data: {
         ...data,
-        nota_penjualan,
         sisa_tagihan: 0
       },
       message: 'Penjualan berhasil dibuat'

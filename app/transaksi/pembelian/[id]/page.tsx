@@ -82,7 +82,9 @@ export default function DetailPembelianPage({
   const [showModalLunas, setShowModalLunas] = useState(false);
   const [showModalEditPembelian, setShowModalEditPembelian] = useState(false);
   const [showModalEditUangMuka, setShowModalEditUangMuka] = useState(false);
-  
+  const [loadingDeleteCicilan, setLoadingDeleteCicilan] = useState(false);
+  const [loadingTerimaBarang, setLoadingTerimaBarang] = useState(false); // ✅ Tambah ini
+
   const [selectedDetail, setSelectedDetail] = useState<DetailPembelian | null>(null);
 
   // Permission guards - Only gidang and admin can manage purchases after billing
@@ -202,23 +204,30 @@ export default function DetailPembelianPage({
   };
 
   const handleDiterima = async () => {
-    if (!confirm('Konfirmasi barang sudah diterima? Stok akan otomatis ditambahkan.')) return;
-    try {
-      const res = await fetch(`/api/transaksi/pembelian/${id}/terima`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const json = await res.json();
-      if (res.ok) {
-        alert('Status barang berhasil diupdate dan stok telah ditambahkan');
-        fetchDetail();
-      } else {
-        alert('Gagal update status: ' + (json.error || 'Unknown error'));
-      }
-    } catch (error: any) {
-      alert('Terjadi kesalahan: ' + error.message);
+  if (!confirm('Konfirmasi barang sudah diterima? Stok akan otomatis ditambahkan.')) return;
+  
+  setLoadingTerimaBarang(true); // ✅ Show loading
+  
+  try {
+    const res = await fetch(`/api/transaksi/pembelian/${id}/terima`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const json = await res.json();
+    
+    setLoadingTerimaBarang(false); // ✅ Hide loading before alert
+    
+    if (res.ok) {
+      alert('Status barang berhasil diupdate dan stok telah ditambahkan');
+      fetchDetail();
+    } else {
+      alert('Gagal update status: ' + (json.error || 'Unknown error'));
     }
-  };
+  } catch (error: any) {
+    setLoadingTerimaBarang(false); // ✅ Hide loading before alert
+    alert('Terjadi kesalahan: ' + error.message);
+  }
+};
 
   const handleEditBarang = (detail: DetailPembelian) => {
     setSelectedDetail(detail);
@@ -227,14 +236,17 @@ export default function DetailPembelianPage({
 
   const handleDeleteCicilan = async (cicilanId: number) => {
     if (!confirm('Hapus cicilan ini? Saldo kas akan dikembalikan.')) return;
+    setLoadingDeleteCicilan(true);
     try {
       const res = await fetch(`/api/transaksi/pembelian/${id}/cicilan?cicilanId=${cicilanId}&pembelianId=${id}`, { method: 'DELETE' });
       const json = await res.json();
+      setLoadingDeleteCicilan(false); // Hide spinner before showing alert
       if (res.ok) {
         alert('Cicilan berhasil dihapus dan saldo kas dikembalikan');
         fetchDetail();
       } else alert('Gagal menghapus cicilan: ' + json.error);
     } catch (error) {
+      setLoadingDeleteCicilan(false); // Hide spinner before showing alert
       alert('Gagal menghapus cicilan');
     }
   };
@@ -371,6 +383,7 @@ export default function DetailPembelianPage({
               {pembelian.status_barang !== 'Diterima' && (
                 <button
                   onClick={handleDiterima}
+                  disabled={loadingTerimaBarang} // ✅ Disable saat loading
                   className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl hover:shadow-xl transition-all duration-300 hover:scale-105 font-medium"
                 >
                   <CheckCircle className="w-5 h-5" />
@@ -954,6 +967,31 @@ export default function DetailPembelianPage({
         rekening_bayar: pembelian.rekening_bayar,
       }}
     />
+
+    {/* Loading Overlay for Delete Cicilan */}
+{loadingDeleteCicilan && (
+  <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60]">
+    <div className="bg-white rounded-lg p-8 flex flex-col items-center gap-4">
+      <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+      <div className="text-center">
+        <p className="text-lg font-semibold text-gray-800">Menghapus Cicilan...</p>
+        <p className="text-sm text-gray-600">Mohon tunggu sebentar</p>
+      </div>
+    </div>
+  </div>
+)}
+{/* ✅ Loading Overlay for Terima Barang */}
+{loadingTerimaBarang && (
+  <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60]">
+    <div className="bg-white rounded-lg p-8 flex flex-col items-center gap-4">
+      <div className="animate-spin rounded-full h-12 w-12 border-4 border-green-500 border-t-transparent"></div>
+      <div className="text-center">
+        <p className="text-lg font-semibold text-gray-800">Menerima Barang...</p>
+        <p className="text-sm text-gray-600">Stok sedang diperbarui, mohon tunggu</p>
+      </div>
+    </div>
+  </div>
+)}
       </div>
     </div>
   );

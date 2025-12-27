@@ -40,6 +40,7 @@ export default function DetailPenjualanPage({
   const [showModalTerima, setShowModalTerima] = useState(false);
   const [showModalEditBarang, setShowModalEditBarang] = useState(false);
   const [selectedDetail, setSelectedDetail] = useState<any>(null);
+  const [deletingItem, setDeletingItem] = useState(false);
 
   useEffect(() => {
     params.then((p) => {
@@ -82,6 +83,7 @@ export default function DetailPenjualanPage({
     if (!confirm('Apakah Anda yakin ingin menghapus barang ini?')) return;
 
     try {
+      setDeletingItem(true);
       const res = await fetch(
         `/api/transaksi/penjualan/${id}/items?itemId=${itemId}&penjualanId=${id}`,
         { method: 'DELETE' }
@@ -96,6 +98,8 @@ export default function DetailPenjualanPage({
     } catch (error) {
       console.error('Error:', error);
       alert('Terjadi kesalahan');
+    } finally {
+      setDeletingItem(false);
     }
   };
 
@@ -181,7 +185,21 @@ export default function DetailPenjualanPage({
   });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4 md:p-8">
+    <>
+      {/* Full Screen Loading Overlay for Delete Operation */}
+      {deletingItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg p-8 flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-red-500 border-t-transparent"></div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-gray-800">Menghapus Barang...</p>
+              <p className="text-sm text-gray-600">Mohon tunggu sebentar</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
         
         {/* Header dengan Glassmorphism */}
@@ -665,5 +683,6 @@ export default function DetailPenjualanPage({
   cabangId={penjualan?.pegawai?.cabang?.id}  // ✅ TAMBAHKAN INI dengan optional chaining
 />
     </div>
+    </>
   );
 }

@@ -147,8 +147,9 @@ export default function ModalEditKomposisi({
       const selected = produks.find(p => p.produk_id === Number(itemId));
       setSelectedProduk(selected || null);
 
-      // Langsung set HPP dari data produk
+      // Use simple HPP from produk table (no FIFO complexity)
       setHpp(selected?.hpp || 0);
+      console.log(`Simple HPP for produk ${itemId}: ${selected?.hpp || 0}`);
     } else {
       setSelectedProduk(null);
       setHpp(0);

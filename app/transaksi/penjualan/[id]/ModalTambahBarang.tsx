@@ -146,8 +146,22 @@ export default function ModalTambahBarang({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-yellow-50 rounded-lg p-6 w-full max-w-md">
+    <>
+      {/* Full Screen Loading Overlay */}
+      {loading && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg p-8 flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-gray-800">Menyimpan Barang...</p>
+              <p className="text-sm text-gray-600">Mohon tunggu sebentar</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-yellow-50 rounded-lg p-6 w-full max-w-md">
         {/* Header */}
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold">TAMBAH BARANG</h2>
@@ -156,10 +170,11 @@ export default function ModalTambahBarang({
           </button>
         </div>
 
-        {/* Debug Info */}
+        {/* Loading Info */}
         {loadingStock && (
-          <div className="mb-4 p-2 bg-blue-100 text-blue-700 rounded text-sm">
-            Loading stock...
+          <div className="flex items-center justify-center py-4 mb-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-500 border-t-transparent mr-3"></div>
+            <span className="text-blue-700 font-medium">Memuat data stock...</span>
           </div>
         )}
         {!loadingStock && stockList.length === 0 && (
@@ -265,9 +280,12 @@ export default function ModalTambahBarang({
             <button
               type="submit"
               disabled={loading || loadingStock || stockList.length === 0}
-              className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              {loading ? 'Loading...' : 'Simpan'}
+              {loading && (
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+              )}
+              {loading ? 'Menyimpan...' : 'Simpan'}
             </button>
             <button
               type="button"
@@ -280,5 +298,6 @@ export default function ModalTambahBarang({
         </form>
       </div>
     </div>
+    </>
   );
 }

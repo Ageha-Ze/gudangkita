@@ -85,87 +85,107 @@ export default function ModalTambahPenjualan({
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    if (formData.pegawai_id === 0) {
-      alert('Pilih sales terlebih dahulu');
-      return;
-    }
+  // ✅ PREVENT DOUBLE-SUBMIT (FIX #1)
+  if (loading) {
+    console.log('⚠️ Submit already in progress, ignoring...');
+    return;
+  }
 
-    // ✅ Validasi customer: bisa dropdown atau manual
-    if (useDropdown && formData.customer_id === 0) {
-      alert('Pilih customer terlebih dahulu');
-      return;
-    }
+  if (formData.pegawai_id === 0) {
+    alert('Pilih sales terlebih dahulu');
+    return;
+  }
 
-    if (!useDropdown && !formData.customer_nama_manual.trim()) {
-      alert('Masukkan nama customer');
-      return;
-    }
+  // ✅ Validasi customer: bisa dropdown atau manual
+  if (useDropdown && formData.customer_id === 0) {
+    alert('Pilih customer terlebih dahulu');
+    return;
+  }
 
-    try {
-      setLoading(true);
+  if (!useDropdown && !formData.customer_nama_manual.trim()) {
+    alert('Masukkan nama customer');
+    return;
+  }
 
-      // ✅ Jika input manual, create customer dulu
-      let customerId = formData.customer_id;
+  try {
+    setLoading(true);
 
-      if (!useDropdown && formData.customer_nama_manual) {
-        // Generate kode customer otomatis
-        const kodeCustomer = `CUST-${Date.now()}`;
+    // ✅ Jika input manual, create customer dulu
+    let customerId = formData.customer_id;
 
-        const resCustomer = await fetch('/api/master/customer', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            kode_customer: kodeCustomer,
-            nama: formData.customer_nama_manual,
-            cabang_id: selectedPegawai?.cabang_id || null,
-          }),
-        });
+    if (!useDropdown && formData.customer_nama_manual) {
+      // Generate kode customer otomatis
+      const kodeCustomer = `CUST-${Date.now()}`;
 
-        if (!resCustomer.ok) {
-          throw new Error('Gagal membuat customer baru');
-        }
-
-        const jsonCustomer = await resCustomer.json();
-        customerId = jsonCustomer.data.id;
-      }
-
-      // Create penjualan
-      const res = await fetch('/api/transaksi/penjualan', {
+      const resCustomer = await fetch('/api/master/customer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...formData,
-          customer_id: customerId,
+          kode_customer: kodeCustomer,
+          nama: formData.customer_nama_manual,
+          cabang_id: selectedPegawai?.cabang_id || null,
         }),
       });
 
-      if (res.ok) {
-        const json = await res.json();
-        alert('Penjualan berhasil dibuat');
-
-        // Redirect ke halaman detail
-        window.location.href = `/transaksi/penjualan/${json.data.id}`;
-
-        onSuccess();
-        onClose();
-      } else {
-        const error = await res.json();
-        alert(error.error || 'Gagal membuat penjualan');
+      if (!resCustomer.ok) {
+        throw new Error('Gagal membuat customer baru');
       }
-    } catch (error) {
-      console.error('Error:', error);
-      alert('Terjadi kesalahan');
-    } finally {
-      setLoading(false);
+
+      const jsonCustomer = await resCustomer.json();
+      customerId = jsonCustomer.data.id;
     }
-  };
+
+    // Create penjualan
+    const res = await fetch('/api/transaksi/penjualan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...formData,
+        customer_id: customerId,
+      }),
+    });
+
+    if (res.ok) {
+      const json = await res.json();
+      alert('Penjualan berhasil dibuat');
+
+      // Redirect ke halaman detail
+      window.location.href = `/transaksi/penjualan/${json.data.id}`;
+
+      onSuccess();
+      onClose();
+    } else {
+      const error = await res.json();
+      alert(error.error || 'Gagal membuat penjualan');
+    }
+  } catch (error) {
+    console.error('Error:', error);
+    alert('Terjadi kesalahan');
+  } finally {
+    setLoading(false);
+  }
+};
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <>
+      {/* Full Screen Loading Overlay */}
+      {loading && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg p-8 flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-gray-800">Menyimpan Penjualan...</p>
+              <p className="text-sm text-gray-600">Mohon tunggu sebentar</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-yellow-50 rounded-lg p-6 w-full max-w-md">
         {/* Header */}
         <div className="flex justify-between items-center mb-4">
@@ -176,8 +196,9 @@ export default function ModalTambahPenjualan({
         </div>
 
         {loadingData && (
-          <div className="text-center py-2 mb-4 bg-blue-100 rounded">
-            Loading data...
+          <div className="flex items-center justify-center py-4 mb-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-500 border-t-transparent mr-3"></div>
+            <span className="text-blue-700 font-medium">Memuat data...</span>
           </div>
         )}
 
@@ -300,9 +321,12 @@ export default function ModalTambahPenjualan({
             <button
               type="submit"
               disabled={loading || loadingData}
-              className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
             >
-              {loading ? 'Loading...' : 'Detail'}
+              {loading && (
+                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+              )}
+              {loading ? 'Membuat...' : 'Detail'}
             </button>
             <button
               type="button"
@@ -315,5 +339,6 @@ export default function ModalTambahPenjualan({
         </form>
       </div>
     </div>
+    </>
   );
 }

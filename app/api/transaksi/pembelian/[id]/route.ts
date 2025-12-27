@@ -56,13 +56,13 @@ export async function GET(
     // Fetch related data separately untuk memastikan data lengkap
     const { data: suplier } = await supabase
       .from('suplier')
-      .select('id, nama, cabang_id')
+      .select('id, nama, alamat, no_telp') // ✅ Tambahkan alamat & no_telp
       .eq('id', pembelian.suplier_id)
       .single();
 
     const { data: cabang } = await supabase
       .from('cabang')
-      .select('id, nama_cabang, kode_cabang')
+      .select('id, nama_cabang, kode_cabang, alamat, no_telp') // ✅ Tambahkan alamat & no_telp
       .eq('id', pembelian.cabang_id)
       .single();
 
@@ -206,12 +206,53 @@ export async function PATCH(
       );
     }
 
+    // ✅ Jika suplier_id diubah, auto-update cabang_id dari suplier
+    let updateData = { ...body };
+    
+    if (body.suplier_id) {
+      console.log('📝 Fetching cabang from supplier:', body.suplier_id);
+      
+      const { data: suplier, error: suplierError } = await supabase
+        .from('suplier')
+        .select('cabang_id')
+        .eq('id', body.suplier_id)
+        .single();
+
+      if (suplierError) {
+        console.error('Error fetching suplier:', suplierError);
+        return NextResponse.json(
+          { error: 'Supplier tidak ditemukan' },
+          { status: 400 }
+        );
+      }
+
+      // ✅ Override cabang_id dengan cabang dari supplier
+      updateData.cabang_id = suplier.cabang_id;
+      console.log('✅ Auto-set cabang_id from supplier:', suplier.cabang_id);
+    }
+
     // Update data
     const { data: updatedRow, error } = await supabase
       .from('transaksi_pembelian')
-      .update(body)
+      .update(updateData)
       .eq('id', id)
-      .select()
+      .select(`
+        *,
+        suplier:suplier_id (
+          id,
+          nama,
+          cabang:cabang_id (
+            id,
+            nama_cabang,
+            kode_cabang
+          )
+        ),
+        cabang:cabang_id (
+          id,
+          nama_cabang,
+          kode_cabang
+        )
+      `)
       .single();
 
     if (error) {
@@ -219,8 +260,9 @@ export async function PATCH(
       throw error;
     }
 
-    console.log('Data updated successfully');
+    console.log('✅ Data updated successfully');
     return NextResponse.json({
+      success: true,
       message: 'Data berhasil diupdate',
       data: updatedRow
     });

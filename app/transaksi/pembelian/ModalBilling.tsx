@@ -190,7 +190,21 @@ export default function ModalBilling({ isOpen, onClose, onSuccess, pembelianData
   const hasDP = parseInt(formData.uang_muka) > 0;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <>
+      {/* Full Screen Loading Overlay */}
+      {loading && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg p-8 flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-gray-800">Memproses Billing Pembelian...</p>
+              <p className="text-sm text-gray-600">Mohon tunggu sebentar</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg w-full max-w-xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="sticky top-0 bg-yellow-100 px-6 py-4 border-b flex items-center justify-between">
@@ -375,5 +389,6 @@ export default function ModalBilling({ isOpen, onClose, onSuccess, pembelianData
         </form>
       </div>
     </div>
+    </>
   );
 }

@@ -121,7 +121,7 @@ export default function ModalTambahPembelian({ isOpen, onClose, onSuccess, isTra
 
   const fetchSupliers = async () => {
     try {
-      const res = await fetch('/api/master/suplier');
+      const res = await fetch('/api/master/supplier');
       const json = await res.json();
       setSupliers(json.data || []);
     } catch (error) {
@@ -203,6 +203,19 @@ export default function ModalTambahPembelian({ isOpen, onClose, onSuccess, isTra
 
   return (
     <>
+      {/* Full Screen Loading Overlay */}
+      {loading && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg p-8 flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-gray-800">Menyimpan Pembelian...</p>
+              <p className="text-sm text-gray-600">Mohon tunggu sebentar</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto relative">
         {/* Header */}

@@ -4,11 +4,13 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { loginUser } from './actions';
 import { useUser } from '@/contexts/UserContext';
+import { useConnectionHandler } from '@/hooks/useConnectionHandler';
 import { Eye, EyeOff, Lock, User, Building2, Package, TrendingUp, BarChart3, ArrowRight, Activity, DollarSign, Boxes, Receipt, CreditCard, CheckCircle, AlertTriangle, Award, Shield } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
   const { refreshUser } = useUser();
+  const { isOnline } = useConnectionHandler();
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -23,6 +25,12 @@ export default function LoginPage() {
       return;
     }
 
+    // Check connection status before attempting login
+    if (!isOnline) {
+      setError('Tidak dapat terhubung ke server. Periksa koneksi internet Anda dan coba lagi.');
+      return;
+    }
+
     setIsLoading(true);
     setError('');
 
@@ -30,16 +38,16 @@ export default function LoginPage() {
 
     if (result.success) {
       console.log('✅ Login successful, refreshing user context...');
-      
+
       // Refresh user context sebelum redirect
       await refreshUser();
-      
+
       console.log('✅ User context refreshed, redirecting...');
       router.push('/dashboard');
     } else {
       setError(result.error || 'Login gagal');
     }
-    
+
     setIsLoading(false);
   };
 

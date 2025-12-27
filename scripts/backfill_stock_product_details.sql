@@ -13,3 +13,8 @@ AND (
   OR stock_barang.kode_produk IS NULL
   OR stock_barang.satuan IS NULL
 );
+
+
+
+
+
