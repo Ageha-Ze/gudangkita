@@ -48,6 +48,7 @@ export default function PiutangPenjualanPage() {
   const [selectedPiutang, setSelectedPiutang] = useState<PiutangDetail | null>(null);
   const [piutangData, setPiutangData] = useState<PiutangItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [cabangList, setCabangList] = useState<Cabang[]>([]);
   const [kasList, setKasList] = useState<Array<{ id: number; nama_kas: string }>>([]);
   const [activeTab, setActiveTab] = useState<'active' | 'history'>('active');
@@ -197,7 +198,7 @@ export default function PiutangPenjualanPage() {
 
 
   const fetchDetailPiutang = async (piutangId: number) => {
-    setLoading(true);
+    setSubmitting(true);
     setError(null);
 
     try {
@@ -236,7 +237,7 @@ export default function PiutangPenjualanPage() {
         error.message : 'Terjadi kesalahan saat memuat detail piutang. Silakan coba lagi.';
       setError(errorMessage);
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -389,8 +390,22 @@ export default function PiutangPenjualanPage() {
     );
   }
 
+  // Submitting overlay for modal actions
+  
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
+      {submitting && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg p-8 flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-gray-800">Memproses...</p>
+              <p className="text-sm text-gray-600">Mohon tunggu sebentar</p>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-800 mb-2">Piutang Penjualan</h1>
@@ -874,9 +889,10 @@ export default function PiutangPenjualanPage() {
                 </button>
                 <button
                   onClick={handleInputPembayaran}
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Simpan Pembayaran
+                  {submitting ? 'Menyimpan...' : 'Simpan Pembayaran'}
                 </button>
               </div>
             </div>

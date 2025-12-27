@@ -262,6 +262,7 @@ export default function TambahKonsinyasiPage() {
     }
 
     try {
+      setLoading(true);
       const res = await fetch('/api/transaksi/konsinyasi/toko', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -292,10 +293,25 @@ export default function TambahKonsinyasiPage() {
       console.error('Error:', error);
       alert('Terjadi kesalahan');
     }
-  };
+      setLoading(false);
+    }
 
   return (
-    <div className="p-6 bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+    <>
+      {/* Full Screen Loading Overlay */}
+      {loading && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg p-8 flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-gray-800">Menyimpan Konsinyasi...</p>
+              <p className="text-sm text-gray-600">Mohon tunggu sebentar</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="p-6 bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
       <div className="flex items-center gap-4 mb-8 bg-white p-4 rounded-xl shadow-lg border-l-4 border-indigo-500">
         <div className="bg-indigo-500 p-3 rounded-lg">
           <Package className="text-white" size={24} />
@@ -706,9 +722,10 @@ export default function TambahKonsinyasiPage() {
               <div className="flex gap-2 pt-2">
                 <button
                   onClick={handleQuickAddToko}
-                  className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700"
+                  disabled={loading}
+                  className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Simpan
+                  {loading ? 'Menyimpan...' : 'Simpan'}
                 </button>
                 <button
                   onClick={() => setShowTokoModal(false)}
@@ -722,5 +739,6 @@ export default function TambahKonsinyasiPage() {
         </div>
       )}
     </div>
+    </>
   );
 }

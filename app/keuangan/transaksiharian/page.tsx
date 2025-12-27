@@ -53,6 +53,7 @@ export default function TransaksiKasHarian() {
   const [saldoInfo, setSaldoInfo] = useState<SaldoInfo | null>(null);
   const [kasList, setKasList] = useState<Kas[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -130,7 +131,7 @@ export default function TransaksiKasHarian() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+    setSubmitting(true);
     try {
       const response = await fetch('/api/keuangan/kas-harian', {
         method: 'POST',
@@ -164,6 +165,8 @@ export default function TransaksiKasHarian() {
     } catch (error) {
       console.error('Error saving transaction:', error);
       alert('Terjadi kesalahan saat menyimpan');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -181,6 +184,7 @@ export default function TransaksiKasHarian() {
     }
 
     try {
+      setSubmitting(true);
       const response = await fetch('/api/keuangan/kas-harian', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -218,13 +222,15 @@ export default function TransaksiKasHarian() {
     } catch (error) {
       console.error('Error transfer:', error);
       alert('Terjadi kesalahan saat transfer');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm('Yakin ingin menghapus transaksi ini?')) return;
-    
     try {
+      setSubmitting(true);
       const response = await fetch(`/api/keuangan/kas-harian?id=${id}`, {
         method: 'DELETE'
       });
@@ -239,6 +245,8 @@ export default function TransaksiKasHarian() {
       }
     } catch (error) {
       console.error('Error deleting transaction:', error);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -279,6 +287,17 @@ export default function TransaksiKasHarian() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-cyan-50 p-6">
       <div className="max-w-7xl mx-auto">
+        {submitting && (
+          <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60]">
+            <div className="bg-white rounded-lg p-8 flex flex-col items-center gap-4">
+              <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+              <div className="text-center">
+                <p className="text-lg font-semibold text-gray-800">Memproses...</p>
+                <p className="text-sm text-gray-600">Mohon tunggu sebentar</p>
+              </div>
+            </div>
+          </div>
+        )}
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-800 mb-2">Transaksi Kas Harian</h1>
@@ -586,9 +605,10 @@ export default function TransaksiKasHarian() {
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-2 bg-gradient-to-r from-indigo-600 to-cyan-600 text-white rounded-lg hover:from-indigo-700 hover:to-cyan-700 transition-all"
+                    disabled={submitting}
+                    className="flex-1 px-4 py-2 bg-gradient-to-r from-indigo-600 to-cyan-600 text-white rounded-lg hover:from-indigo-700 hover:to-cyan-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Simpan
+                    {submitting ? 'Menyimpan...' : 'Simpan'}
                   </button>
                 </div>
               </form>
@@ -720,9 +740,10 @@ export default function TransaksiKasHarian() {
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all"
+                    disabled={submitting}
+                    className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Transfer
+                    {submitting ? 'Memproses...' : 'Transfer'}
                   </button>
                 </div>
               </form>

@@ -21,6 +21,7 @@ export default function ProduksiPage() {
   const router = useRouter();
   const [produksis, setProduksis] = useState<Produksi[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -83,9 +84,14 @@ export default function ProduksiPage() {
   };
 
   const handleDelete = async (produksiId: number) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus data produksi ini? Data yang sudah dihapus tidak dapat dikembalikan.')) return;
+    setSubmitting(true);
+    // allow overlay to render before blocking confirm
+    await new Promise(r => setTimeout(r, 10));
+    if (!confirm('Apakah Anda yakin ingin menghapus data produksi ini? Data yang sudah dihapus tidak dapat dikembalikan.')) {
+      setSubmitting(false);
+      return;
+    }
 
-    setLoading(true);
     setError(null);
 
     try {
@@ -131,7 +137,7 @@ export default function ProduksiPage() {
         error.message : 'Terjadi kesalahan saat menghapus data produksi. Silakan coba lagi.';
       setError(errorMessage);
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -174,6 +180,17 @@ export default function ProduksiPage() {
 
   return (
     <div className="max-w-7xl mx-auto">
+      {submitting && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg p-8 flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-gray-800">Memproses...</p>
+              <p className="text-sm text-gray-600">Mohon tunggu sebentar</p>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Stats Cards - Mini Version */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div className="bg-white rounded-lg p-4 shadow-sm border border-gray-200">

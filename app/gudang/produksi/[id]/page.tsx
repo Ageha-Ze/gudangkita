@@ -40,6 +40,7 @@ export default function DetailProduksiPage({
   const [id, setId] = useState<string>('');
   const [produksi, setProduksi] = useState<ProduksiData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [showModalKomposisi, setShowModalKomposisi] = useState(false);
   const [showModalEditKomposisi, setShowModalEditKomposisi] = useState(false);
   const [showModalEditProduksi, setShowModalEditProduksi] = useState(false);
@@ -67,7 +68,12 @@ export default function DetailProduksiPage({
   };
 
   const handleDeleteItem = async (detailId: number) => {
-    if (!confirm('Apakah Anda yakin ingin menghapus item ini?')) return;
+    setSubmitting(true);
+    await new Promise(r => setTimeout(r, 10));
+    if (!confirm('Apakah Anda yakin ingin menghapus item ini?')) {
+      setSubmitting(false);
+      return;
+    }
     try {
       const res = await fetch(`/api/gudang/produksi/${id}/details?detailId=${detailId}`, { method: 'DELETE' });
       if (res.ok) {
@@ -78,11 +84,18 @@ export default function DetailProduksiPage({
       }
     } catch (error) {
       console.error('Error:', error);
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handlePost = async () => {
-    if (!confirm('Apakah Anda yakin ingin memposting produksi ini? Status akan diubah ke posted.')) return;
+    setSubmitting(true);
+    await new Promise(r => setTimeout(r, 10));
+    if (!confirm('Apakah Anda yakin ingin memposting produksi ini? Status akan diubah ke posted.')) {
+      setSubmitting(false);
+      return;
+    }
     try {
       const res = await fetch(`/api/gudang/produksi/${id}/post`, { method: 'POST' });
       if (res.ok) {
@@ -93,25 +106,34 @@ export default function DetailProduksiPage({
       }
     } catch (error) {
       console.error('Error:', error);
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleCancel = async () => {
-  if (!confirm('Apakah Anda yakin ingin membatalkan produksi ini? Semua detail akan dihapus.')) return;
-  try {
-    const res = await fetch(`/api/gudang/produksi/${id}`, { method: 'DELETE' });
-    if (res.ok) {
-      alert('Produksi berhasil dibatalkan');
-      router.push('/gudang/produksi');
-    } else {
-      const errorData = await res.json();
-      alert(`Gagal membatalkan: ${errorData.error || 'Unknown error'}`);
+    setSubmitting(true);
+    await new Promise(r => setTimeout(r, 10));
+    if (!confirm('Apakah Anda yakin ingin membatalkan produksi ini? Semua detail akan dihapus.')) {
+      setSubmitting(false);
+      return;
     }
-  } catch (error) {
-    console.error('Error:', error);
-    alert('Terjadi kesalahan saat membatalkan produksi');
-  }
-};
+    try {
+      const res = await fetch(`/api/gudang/produksi/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        alert('Produksi berhasil dibatalkan');
+        router.push('/gudang/produksi');
+      } else {
+        const errorData = await res.json();
+        alert(`Gagal membatalkan: ${errorData.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Terjadi kesalahan saat membatalkan produksi');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const calculateTotalSubtotal = () => {
     return produksi?.detail_produksi?.reduce((sum, d) => sum + d.subtotal, 0) || 0;
@@ -149,6 +171,17 @@ export default function DetailProduksiPage({
 
   return (
     <div className="max-w-7xl mx-auto">
+      {submitting && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg p-8 flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-gray-800">Memproses...</p>
+              <p className="text-sm text-gray-600">Mohon tunggu sebentar</p>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Back Button */}
       <button
         onClick={() => router.push('/gudang/produksi')}

@@ -68,6 +68,7 @@ export default function DetailKonsinyasiPage() {
   // List kas untuk dropdown
   const [kasList, setKasList] = useState<Kas[]>([]);
   const [loadingKas, setLoadingKas] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // Form penjualan
   const [penjualanForm, setPenjualanForm] = useState({
@@ -197,6 +198,7 @@ export default function DetailKonsinyasiPage() {
     if (!confirm('Yakin ingin menghapus penjualan ini? Stock dan kas akan dikembalikan.')) return;
 
     try {
+      setSubmitting(true);
       const res = await fetch(`/api/transaksi/konsinyasi/penjualan/${penjualanId}`, {
         method: 'DELETE',
       });
@@ -212,6 +214,9 @@ export default function DetailKonsinyasiPage() {
     } catch (error) {
       console.error('Error:', error);
       alert('Terjadi kesalahan');
+    }
+    finally {
+      setSubmitting(false);
     }
   };
 
@@ -247,6 +252,7 @@ export default function DetailKonsinyasiPage() {
     }
 
     try {
+      setSubmitting(true);
       const url = activeModal === 'edit' 
         ? `/api/transaksi/konsinyasi/penjualan/${selectedPenjualan.id}`
         : '/api/transaksi/konsinyasi/penjualan';
@@ -281,6 +287,9 @@ export default function DetailKonsinyasiPage() {
       console.error('Error:', error);
       alert('Terjadi kesalahan');
     }
+    finally {
+      setSubmitting(false);
+    }
   };
 
   const handleSubmitRetur = async (e: React.FormEvent) => {
@@ -301,6 +310,7 @@ export default function DetailKonsinyasiPage() {
     }
 
     try {
+      setSubmitting(true);
       const res = await fetch('/api/transaksi/konsinyasi/retur', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -326,6 +336,8 @@ export default function DetailKonsinyasiPage() {
     } catch (error) {
       console.error('Error:', error);
       alert('Terjadi kesalahan');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -333,6 +345,7 @@ export default function DetailKonsinyasiPage() {
     if (!confirm('Yakin ingin menyelesaikan konsinyasi ini? Status akan berubah menjadi Selesai.')) return;
 
     try {
+      setSubmitting(true);
       const res = await fetch(`/api/transaksi/konsinyasi/${konsinyasiId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -348,6 +361,8 @@ export default function DetailKonsinyasiPage() {
     } catch (error) {
       console.error('Error:', error);
       alert('Terjadi kesalahan');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -377,6 +392,17 @@ if (loading) {
 
   return (
     <div className="p-3 sm:p-6 bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+      {submitting && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg p-8 flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-gray-800">Memproses...</p>
+              <p className="text-sm text-gray-600">Mohon tunggu sebentar</p>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4 sm:mb-8 bg-white p-3 sm:p-4 rounded-xl shadow-lg border-l-4 border-indigo-500">
         <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto">
@@ -397,10 +423,11 @@ if (loading) {
         {data.status === 'Aktif' && (
           <button
             onClick={handleSelesaikan}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+            disabled={submitting}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <CheckCircle size={18} />
-            Selesaikan
+            {submitting ? 'Memproses...' : 'Selesaikan'}
           </button>
         )}
       </div>
@@ -641,7 +668,8 @@ if (loading) {
                     </button>
                     <button
                       onClick={() => handleDeletePenjualan(penjualan.id)}
-                      className="flex-1 px-3 py-2 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition font-medium"
+                      disabled={submitting}
+                      className="flex-1 px-3 py-2 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Hapus
                     </button>
@@ -713,7 +741,8 @@ if (loading) {
                             </button>
                             <button
                               onClick={() => handleDeletePenjualan(penjualan.id)}
-                              className="px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition font-medium"
+                              disabled={submitting}
+                              className="px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               Hapus
                             </button>
@@ -819,12 +848,12 @@ if (loading) {
               </div>
 
               <div className="flex gap-2">
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition font-medium"
-                  disabled={loadingKas || kasList.length === 0}
+                  disabled={loadingKas || kasList.length === 0 || submitting}
                 >
-                  Simpan
+                  {submitting ? 'Menyimpan...' : 'Simpan'}
                 </button>
                 <button
                   type="button"
@@ -906,8 +935,8 @@ if (loading) {
                 />
               </div>
               <div className="flex gap-2">
-                <button type="submit" className="flex-1 bg-orange-600 text-white py-2 rounded-lg hover:bg-orange-700 transition font-medium">
-                  Simpan
+                <button type="submit" disabled={submitting} className="flex-1 bg-orange-600 text-white py-2 rounded-lg hover:bg-orange-700 transition font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+                  {submitting ? 'Menyimpan...' : 'Simpan'}
                 </button>
                 <button
                   type="button"

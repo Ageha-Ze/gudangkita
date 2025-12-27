@@ -39,6 +39,7 @@ export default function HutangPembelianPage() {
   const [filteredData, setFilteredData] = useState<HutangPembelian[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
+   const [submitting, setSubmitting] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -123,10 +124,13 @@ export default function HutangPembelianPage() {
       setSelectedHutang(data);
       setShowDetailModal(true);
     } catch (error: any) {
-      console.error('Error fetching detail hutang:', error);
-      alert(error.message || 'Terjadi kesalahan saat memuat detail hutang.');
+      console.error('Error updating jatuh tempo:', error);
+      const errorMessage = error.message?.includes('Gagal mengupdate') ?
+        error.message : 'Terjadi kesalahan saat mengupdate jatuh tempo.';
+      setError(errorMessage);
     } finally {
       setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -203,7 +207,7 @@ export default function HutangPembelianPage() {
       return;
     }
 
-    setLoading(true);
+    setSubmitting(true);
     setError(null);
 
     try {
@@ -325,7 +329,7 @@ export default function HutangPembelianPage() {
       return;
     }
 
-    setLoading(true);
+    setSubmitting(true);
     setError(null);
 
     try {
@@ -363,7 +367,6 @@ export default function HutangPembelianPage() {
       const result = await response.json();
 
       if (result.success !== false) {
-        // Success notification
         const successDiv = document.createElement('div');
         successDiv.className = 'fixed top-4 right-4 bg-green-50 border border-green-200 text-green-700 px-6 py-4 rounded-lg shadow-lg z-50 flex items-center gap-3';
         successDiv.innerHTML = `
@@ -377,14 +380,12 @@ export default function HutangPembelianPage() {
         document.body.appendChild(successDiv);
         setTimeout(() => successDiv.remove(), 5000);
 
-        // Update local state and exit edit mode
         if (selectedHutang) {
           selectedHutang.jatuh_tempo = newJatuhTempo;
         }
         setEditingJatuhTempo(false);
         setNewJatuhTempo('');
 
-        // Refresh data
         await fetchHutang();
       } else {
         setError(result.error || 'Gagal mengupdate jatuh tempo');
@@ -397,6 +398,7 @@ export default function HutangPembelianPage() {
       setError(errorMessage);
     } finally {
       setLoading(false);
+      setSubmitting(false);
     }
   };
 
@@ -407,6 +409,17 @@ export default function HutangPembelianPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-3 sm:p-4 lg:p-6 xl:p-8">
+      {submitting && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg p-8 flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-gray-800">Memproses...</p>
+              <p className="text-sm text-gray-600">Mohon tunggu sebentar</p>
+            </div>
+          </div>
+        </div>
+      )}
         {/* Header Section */}
         <div className="mb-4 sm:mb-6 lg:mb-8">
           <div className="flex items-center gap-2 sm:gap-3 mb-2">
@@ -645,7 +658,7 @@ export default function HutangPembelianPage() {
                         <p className="font-semibold text-gray-900">{hutang.suplier?.nama || '-'}</p>
                       </td>
                       <td className="px-6 py-4">
-<p className="text-gray-600 text-sm">{hutang.transaksi_pembelian?.cabang?.nama_cabang ?? '-'}</p>
+                        <p className="text-gray-600 text-sm">{hutang.transaksi_pembelian?.cabang?.nama_cabang ?? '-'}</p>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <p className="font-semibold text-gray-900">{formatRupiah(hutang.total_hutang)}</p>
@@ -798,10 +811,10 @@ export default function HutangPembelianPage() {
                         <div className="flex gap-2">
                           <button
                             onClick={handleSaveJatuhTempo}
-                            disabled={loading}
-                            className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 disabled:opacity-50"
+                            disabled={submitting}
+                            className="px-3 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            {loading ? 'Menyimpan...' : 'Simpan'}
+                            {submitting ? 'Menyimpan...' : 'Simpan'}
                           </button>
                           <button
                             onClick={handleCancelEditJatuhTempo}
@@ -1041,9 +1054,10 @@ export default function HutangPembelianPage() {
                 </button>
                 <button
                   onClick={handleInputPembayaran}
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Simpan Pembayaran
+                  {submitting ? 'Menyimpan...' : 'Simpan Pembayaran'}
                 </button>
               </div>
             </div>
@@ -1068,5 +1082,5 @@ export default function HutangPembelianPage() {
           </div>
         )}
       </div>
-  );
-}
+    );
+  }

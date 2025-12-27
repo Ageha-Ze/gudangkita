@@ -31,6 +31,7 @@ export default function UnloadingListPage() {
   const [data, setData] = useState<UnloadingItem[]>([]);
   const [cabangList, setCabangList] = useState<Cabang[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
   const [cabangFilter, setCabangFilter] = useState('');
   const [page, setPage] = useState(1);
@@ -89,17 +90,20 @@ export default function UnloadingListPage() {
   };
 
   const handleDelete = async (id: number) => {
+    setSubmitting(true);
+    await new Promise(r => setTimeout(r, 10));
     if (!confirm('⚠️ Menghapus unloading akan mengurangi stock produk!\n\nApakah Anda yakin?')) {
+      setSubmitting(false);
       return;
     }
-    
+
     try {
       const res = await fetch(`/api/gudang/unloading?id=${id}`, {
         method: 'DELETE'
       });
-      
+
       const json = await res.json();
-      
+
       if (res.ok) {
         customToast.success('Berhasil menghapus data!');
         fetchData();
@@ -109,6 +113,8 @@ export default function UnloadingListPage() {
     } catch (error) {
       console.error('Error deleting:', error);
       customToast.error('Terjadi kesalahan saat menghapus');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -217,6 +223,17 @@ export default function UnloadingListPage() {
 
   return (
     <div className="p-3 sm:p-6 bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+      {submitting && (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60]">
+          <div className="bg-white rounded-lg p-8 flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-600 border-t-transparent"></div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-gray-800">Memproses...</p>
+              <p className="text-sm text-gray-600">Mohon tunggu sebentar</p>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center gap-3 sm:gap-4 mb-4 sm:mb-8 bg-white p-3 sm:p-4 rounded-xl shadow-lg border-l-4 border-indigo-500">
         <div className="bg-indigo-500 p-2 sm:p-3 rounded-lg">
